@@ -82,16 +82,16 @@ geometry_msgs::PoseWithCovarianceStamped publishPoseWithCovStamped(
     QuadUkf::QuadBelief b)
 {
   geometry_msgs::PoseWithCovarianceStamped p;
-  p.header.stamp.sec = ros::Time::now().toSec();  // set timestamp
-  p.pose.pose.position.x = b.state.position(0);  // copy position values
+  p.header.stamp.sec = ros::Time::now().toSec();
+  p.pose.pose.position.x = b.state.position(0);
   p.pose.pose.position.y = b.state.position(1);
   p.pose.pose.position.z = b.state.position(2);
-  p.pose.pose.orientation.w = b.state.quaternion.w();  // copy quaternion
+  p.pose.pose.orientation.w = b.state.quaternion.w();
   p.pose.pose.orientation.x = b.state.quaternion.x();
   p.pose.pose.orientation.y = b.state.quaternion.y();
   p.pose.pose.orientation.z = b.state.quaternion.z();
 
-  // copy covariance matrix from b into the covariance array in p
+  // Copy covariance matrix from b into the covariance array in p
   int numCovElems = b.covariance.rows() * b.covariance.cols();
   for (int i = 0; i <= numCovElems; ++i)
   {
@@ -121,7 +121,7 @@ void QuadUkf::poseCallback(
   z(6) = msg_in->pose.pose.orientation.z;
 
   UnscentedKf::Belief currStateAndCov = correctState(lastStateTf, z,
-                                                 R_SensorNoiseCov);
+                                                     R_SensorNoiseCov);
   lastBelief.state = eigenToQuadState(currStateAndCov.state);
   lastBelief.covariance = currStateAndCov.covariance;
 
