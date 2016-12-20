@@ -1,5 +1,3 @@
-// UnscentedKf.h
-
 #ifndef UNSCENTEDKF_H_
 #define UNSCENTEDKF_H_
 
@@ -15,16 +13,30 @@ public:
     Eigen::MatrixXd covariance;
     Eigen::MatrixXd deviations;
   };
+
   struct SigmaPointSet
   {
     Eigen::VectorXd vector;
     Eigen::MatrixXd sigmaPoints;
   };
+
   struct Belief
   {
     Eigen::VectorXd state;
     Eigen::MatrixXd covariance;
   };
+
+  int _numStates;
+  Eigen::VectorXd meanWeights, covarianceWeights;
+
+  // Tunable parameters
+  const double alpha = 0.0003;
+  const double kappa = 0;
+  const double beta = 2;
+  const double lambda = (alpha * alpha) * (_numStates + kappa) - _numStates;
+
+  UnscentedKf();
+  virtual ~UnscentedKf() = 0;
 
   // Asynchronous prediction and correction methods
   UnscentedKf::Transform predictState(Eigen::VectorXd x, Eigen::MatrixXd P,
@@ -39,17 +51,8 @@ public:
 
   virtual Eigen::VectorXd processFunc(Eigen::VectorXd x, double dt) = 0;
   virtual Eigen::VectorXd observationFunc(Eigen::VectorXd z) = 0;
-  virtual ~UnscentedKf() = 0;
-  UnscentedKf();
 
-  const int numStates;
-
-  // Tunable parameters
-  const double alpha = 0.0003;
-  const double kappa = 0;
-  const double beta = 2;
-  const double lambda = (alpha * alpha) * (numStates + kappa) - numStates;
-  Eigen::VectorXd meanWeights, covarianceWeights;
+private:
 
   Transform unscentedStateTransform(Eigen::MatrixXd sigmaPts,
                                     Eigen::VectorXd meanWts,

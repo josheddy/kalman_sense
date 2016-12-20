@@ -5,7 +5,6 @@
 #include "ros/ros.h"
 #include "geometry_msgs/PoseWithCovarianceStamped.h"
 #include "sensor_msgs/Imu.h"
-#include <Eigen/Dense>
 
 class QuadUkf : public UnscentedKf
 {
@@ -29,15 +28,15 @@ public:
 
   Transform lastStateTf;
 
-  const int numStates = 16;
+  const int _numStates = 16;
   Eigen::MatrixXd Q_ProcNoiseCov, R_SensorNoiseCov;
 
   QuadUkf(ros::Publisher pub);
   ~QuadUkf();
 
-  void imuCallback(const sensor_msgs::ImuConstPtr &msg);
+  void imuCallback(const sensor_msgs::ImuConstPtr &msg_in);
   void poseCallback(
-      const geometry_msgs::PoseWithCovarianceStampedConstPtr &msg);
+      const geometry_msgs::PoseWithCovarianceStampedConstPtr &msg_in);
 
   Eigen::VectorXd processFunc(const Eigen::VectorXd stateVec, const double dt);
   Eigen::VectorXd observationFunc(const Eigen::VectorXd stateVec);
@@ -53,4 +52,4 @@ private:
   QuadUkf::QuadState eigenToQuadState(const Eigen::VectorXd x) const;
 };
 
-#endif /* KALMAN_SENSE_SRC_QUADUKF_H_ */
+#endif /* QUADUKF_H_ */

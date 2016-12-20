@@ -1,7 +1,4 @@
-#include "UnscentedKf.h"
 #include "QuadUkf.h"
-#include "ros/ros.h"
-#include "geometry_msgs/PoseWithCovarianceStamped.h"
 
 QuadUkf::QuadUkf(ros::Publisher pub)
 {
@@ -9,11 +6,11 @@ QuadUkf::QuadUkf(ros::Publisher pub)
   kGravityAcc << 0.0, 0.0, 9.81;
 
   // Set up mean weights and covariance weights
-  meanWeights = Eigen::VectorXd::Zero(2 * numStates + 1);
-  meanWeights(0) = lambda / (numStates + lambda);
-  for (int i = 1; i < numStates; i++)
+  meanWeights = Eigen::VectorXd::Zero(2 * _numStates + 1);
+  meanWeights(0) = lambda / (_numStates + lambda);
+  for (int i = 1; i < _numStates; i++)
   {
-    meanWeights(i) = 1 / (2 * numStates + lambda);
+    meanWeights(i) = 1 / (2 * _numStates + lambda);
   }
   covarianceWeights = meanWeights;
   covarianceWeights(0) += (1 - alpha * alpha + beta);
@@ -35,13 +32,13 @@ QuadUkf::QuadUkf(ros::Publisher pub)
   QuadUkf::QuadBelief lastBelief {initTimeStamp, init_dt, initState, initCov};
 
   // Initialize process noise covariance and sensor noise covariance
-  Q_ProcNoiseCov = Eigen::MatrixXd::Identity(numStates, numStates);
+  Q_ProcNoiseCov = Eigen::MatrixXd::Identity(_numStates, _numStates);
   Q_ProcNoiseCov *= 0.01;  // default value
   R_SensorNoiseCov = Eigen::MatrixXd::Identity(7, 7);
   R_SensorNoiseCov *= 0.01;  // default value
 
   // Linear sensor map matrix H (z = H * x)
-  H_SensorMap = Eigen::MatrixXd::Identity(numStates, numStates);
+  H_SensorMap = Eigen::MatrixXd::Identity(_numStates, _numStates);
   H_SensorMap.block<6, 6>(7, 7) = Eigen::MatrixXd::Zero(6, 6);
 }
 
@@ -93,7 +90,7 @@ geometry_msgs::PoseWithCovarianceStamped publishPoseWithCovStamped(
 
   // Copy covariance matrix from b into the covariance array in p
   int numCovElems = b.covariance.rows() * b.covariance.cols();
-  for (int i = 0; i <= numCovElems; ++i)
+  for (int i = 0; i < numCovElems; ++i)
   {
     p.pose.covariance[i] = b.covariance(i);
   }
@@ -193,11 +190,12 @@ Eigen::MatrixXd QuadUkf::generateBigOmegaMat(const Eigen::Vector3d w) const
   return Omega;
 }
 
+/*
+ * Convert a QuadUkf::QuadState to an Eigen::VectorXd.
+ */
 Eigen::VectorXd QuadUkf::quadStateToEigen(const QuadUkf::QuadState qs) const
 {
-  // Convert QuadState to Eigen VectorXd.
-
-  Eigen::VectorXd x(numStates);
+  Eigen::VectorXd x(_numStates);
   x(0) = qs.position(0);
   x(1) = qs.position(1);
   x(2) = qs.position(2);
@@ -222,6 +220,9 @@ Eigen::VectorXd QuadUkf::quadStateToEigen(const QuadUkf::QuadState qs) const
   return x;
 }
 
+/*
+ * Convert an Eigen::VectorXd to a QuadUkf::QuadState.
+ */
 QuadUkf::QuadState QuadUkf::eigenToQuadState(const Eigen::VectorXd x) const
 {
   // Convert Eigen VectorXd to QuadState.

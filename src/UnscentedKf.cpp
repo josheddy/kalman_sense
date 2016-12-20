@@ -1,9 +1,7 @@
-// UnscentedKf.cpp
-
 #include "UnscentedKf.h"
 
 UnscentedKf::UnscentedKf() :
-    numStates(1)
+    _numStates(16)
 {
 }
 
@@ -29,6 +27,7 @@ UnscentedKf::Belief UnscentedKf::correctState(UnscentedKf::Transform stateTf,
                                               Eigen::VectorXd z,
                                               Eigen::MatrixXd R)
 {
+  //TODO change this function to simply take in state vector rather than stateTf
   Eigen::VectorXd xPred = stateTf.vector;
   int n = xPred.rows();
   int m = z.rows();
@@ -78,15 +77,16 @@ UnscentedKf::Transform UnscentedKf::unscentedStateTransform(
   int L = sigmaPts.cols();
   Eigen::VectorXd vec = Eigen::VectorXd::Zero(n);
   Eigen::MatrixXd sigmas = Eigen::MatrixXd::Zero(n, L);
-  Eigen::MatrixXd devs = Eigen::MatrixXd::Zero(n, L);
-  Eigen::MatrixXd cov = Eigen::MatrixXd::Zero(n, n);
 
   UnscentedKf::SigmaPointSet sample = sampleStateSpace(sigmaPts, meanWts, dt);
 
   vec = sample.vector;
   sigmas = sample.sigmaPoints;
 
+  Eigen::MatrixXd devs = Eigen::MatrixXd::Zero(n, L);
   devs = computeDeviations(sample);
+
+  Eigen::MatrixXd cov = Eigen::MatrixXd::Zero(n, n);
   cov = computeCovariance(devs, covWts, noiseCov);
 
   UnscentedKf::Transform out {vec, sigmas, cov, devs};
