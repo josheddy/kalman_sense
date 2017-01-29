@@ -5,6 +5,7 @@
 #include "ros/ros.h"
 #include "geometry_msgs/PoseWithCovarianceStamped.h"
 #include "sensor_msgs/Imu.h"
+#include <iostream>
 
 class QuadUkf : public UnscentedKf
 {
@@ -26,7 +27,7 @@ public:
     Eigen::MatrixXd covariance;
   } lastBelief;
 
-  Transform lastStateTf;
+  //Transform lastStateTf; //TODO delete all instances of lastStateTf (deprecated)
 
   const int _numStates = 16;
   Eigen::MatrixXd Q_ProcNoiseCov, R_SensorNoiseCov;
@@ -46,6 +47,8 @@ private:
   Eigen::Vector3d kGravityAcc; // Gravity vector in inertial frame
   Eigen::MatrixXd H_SensorMap; // Observation model matrix H
 
+  geometry_msgs::PoseWithCovarianceStamped quadBeliefToPoseWithCovStamped(
+      QuadUkf::QuadBelief b);
   Eigen::MatrixXd generateBigOmegaMat(
       const Eigen::Vector3d angular_velocity) const;
   Eigen::VectorXd quadStateToEigen(const QuadUkf::QuadState qs) const;

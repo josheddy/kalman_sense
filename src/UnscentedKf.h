@@ -39,15 +39,16 @@ public:
   virtual ~UnscentedKf() = 0;
 
   // Asynchronous prediction and correction methods
-  UnscentedKf::Transform predictState(Eigen::VectorXd x, Eigen::MatrixXd P,
-                                      Eigen::MatrixXd Q, double dt);
+  UnscentedKf::Belief predictState(Eigen::VectorXd x, Eigen::MatrixXd P,
+                                   Eigen::MatrixXd Q, double dt);
   UnscentedKf::Belief correctState(UnscentedKf::Transform stateTf,
                                    Eigen::VectorXd z, Eigen::MatrixXd R);
 
+  //TODO Delete run() (deprecated)
   // Synchronous, all-in-one prediction/correction method
-  UnscentedKf::Belief run(Eigen::VectorXd x, Eigen::MatrixXd P,
-                          Eigen::VectorXd z, Eigen::MatrixXd Q,
-                          Eigen::MatrixXd R, double dt);
+  //UnscentedKf::Belief run(Eigen::VectorXd x, Eigen::MatrixXd P,
+  //                        Eigen::VectorXd z, Eigen::MatrixXd Q,
+  //                        Eigen::MatrixXd R, double dt);
 
   virtual Eigen::VectorXd processFunc(Eigen::VectorXd x, double dt) = 0;
   virtual Eigen::VectorXd observationFunc(Eigen::VectorXd z) = 0;
@@ -73,7 +74,7 @@ private:
                                     Eigen::MatrixXd noiseCov) const;
   Eigen::MatrixXd computeDeviations(UnscentedKf::SigmaPointSet sigmaPts) const;
   Eigen::MatrixXd computeSigmaPoints(Eigen::VectorXd x, Eigen::MatrixXd P,
-                                     double scalingCoeff) const;
+                                     double scalingCoeff);
   Eigen::MatrixXd fillMatrixWithVector(Eigen::VectorXd vec, int numCols) const;
 };
 

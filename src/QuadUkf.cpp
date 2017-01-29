@@ -2,6 +2,8 @@
 
 QuadUkf::QuadUkf(ros::Publisher pub)
 {
+  std::cout << "ctor started" << std::endl;
+
   publisher = pub;
   kGravityAcc << 0.0, 0.0, 9.81;
 
@@ -26,13 +28,13 @@ QuadUkf::QuadUkf(ros::Publisher pub)
   // Define initial belief
   QuadUkf::QuadState initState {initPosition, initQuat, initVelocity,
                                 initAngVel, initAcceleration};
-  Eigen::MatrixXd initCov = Eigen::MatrixXd::Zero(6, 6); //TODO Changed this to match cov dimensions in PoseWithCovStamped. Should it be numStates-by-numStates instead?
+  Eigen::MatrixXd initCov = Eigen::MatrixXd::Zero(_numStates, _numStates);
   double initTimeStamp = ros::Time::now().toSec();
-  double init_dt = 0.000001;
+  double init_dt = 0.0001;
   QuadUkf::QuadBelief lastBelief {initTimeStamp, init_dt, initState, initCov};
 
   // Initialize process noise covariance and sensor noise covariance
-  Q_ProcNoiseCov = Eigen::MatrixXd::Identity(_numStates, _numStates);
+  Q_ProcNoiseCov = Eigen::MatrixXd::Identity(_numStates, _numStates); //TODO I changed this to match cov dims in PoseWCovStamped
   Q_ProcNoiseCov *= 0.01;  // default value
   R_SensorNoiseCov = Eigen::MatrixXd::Identity(7, 7);
   R_SensorNoiseCov *= 0.01;  // default value
@@ -40,18 +42,45 @@ QuadUkf::QuadUkf(ros::Publisher pub)
   // Linear sensor map matrix H (z = H * x)
   H_SensorMap = Eigen::MatrixXd::Identity(_numStates, _numStates);
   H_SensorMap.block<6, 6>(7, 7) = Eigen::MatrixXd::Zero(6, 6);
+
+  std::cout << "ctor finished" << std::endl;
 }
 
 QuadUkf::~QuadUkf()
 {
 }
 
+geometry_msgs::PoseWithCovarianceStamped quadBeliefToPoseWithCovStamped(
+    QuadUkf::QuadBelief b)
+{
+  geometry_msgs::PoseWithCovarianceStamped p;
+  p.header.stamp.sec = b.timeStamp;
+  p.pose.pose.position.x = b.state.position(0);
+  p.pose.pose.position.y = b.state.position(1);
+  p.pose.pose.position.z = b.state.position(2);
+  p.pose.pose.orientation.w = b.state.quaternion.w();
+  p.pose.pose.orientation.x = b.state.quaternion.x();
+  p.pose.pose.orientation.y = b.state.quaternion.y();
+  p.pose.pose.orientation.z = b.state.quaternion.z();
+
+  // Copy covariance matrix from b into the covariance array in p
+//  int numCovElems = b.covariance.rows() * b.covariance.cols();
+//  for (int i = 0; i < numCovElems; ++i)
+//  {
+//    p.pose.covariance[i] = b.covariance(i);
+//  }
+
+  return p;
+}
+
 /*
  * Predicts next state based on IMU readings and then resets lastBelief to
- * reflect that prediction, but does not publish.
+ * reflect that prediction, then publishes lastBelief.
  */
 void QuadUkf::imuCallback(const sensor_msgs::ImuConstPtr &msg)
 {
+  std::cout << "imu cb started" << std::endl;
+
   // Compute time step "dt"
   lastBelief.dt = ros::Time::now().toSec() - lastBelief.timeStamp;
 
@@ -64,67 +93,51 @@ void QuadUkf::imuCallback(const sensor_msgs::ImuConstPtr &msg)
 
   // Predict next state and reset lastStateTf to reflect that state.
   Eigen::VectorXd x = quadStateToEigen(lastBelief.state);
-  lastStateTf = predictState(x, lastBelief.covariance, Q_ProcNoiseCov,
-                             lastBelief.dt);
+  UnscentedKf::Belief b = predictState(x, lastBelief.covariance, Q_ProcNoiseCov,
+                                       lastBelief.dt);
 
   // Reset lastBelief
   double now = ros::Time::now().toSec();
-  QuadUkf::QuadBelief bel {now, lastBelief.dt, eigenToQuadState(
-      lastStateTf.vector),
-                           lastStateTf.covariance};
+  QuadUkf::QuadBelief bel {now, lastBelief.dt, eigenToQuadState(b.state),
+                           b.covariance};
   lastBelief = bel;
-}
 
-geometry_msgs::PoseWithCovarianceStamped publishPoseWithCovStamped(
-    QuadUkf::QuadBelief b)
-{
   geometry_msgs::PoseWithCovarianceStamped p;
-  p.header.stamp.sec = ros::Time::now().toSec();
-  p.pose.pose.position.x = b.state.position(0);
-  p.pose.pose.position.y = b.state.position(1);
-  p.pose.pose.position.z = b.state.position(2);
-  p.pose.pose.orientation.w = b.state.quaternion.w();
-  p.pose.pose.orientation.x = b.state.quaternion.x();
-  p.pose.pose.orientation.y = b.state.quaternion.y();
-  p.pose.pose.orientation.z = b.state.quaternion.z();
-
-  // Copy covariance matrix from b into the covariance array in p
-  int numCovElems = b.covariance.rows() * b.covariance.cols();
-  for (int i = 0; i < numCovElems; ++i)
-  {
-    p.pose.covariance[i] = b.covariance(i);
-  }
-
-  return p;
+  p = quadBeliefToPoseWithCovStamped(bel);
+  publisher.publish(p);
+  std::cout << "imu cb finished" << std::endl;
 }
 
 /*
  * Updates state based on pose sensor readings (that is, SLAM) and resets
  * lastBelief. Then it publishes lastBelief.
  */
+
 void QuadUkf::poseCallback(
     const geometry_msgs::PoseWithCovarianceStampedConstPtr &msg_in)
 {
-  lastBelief.dt = ros::Time::now().toSec() - lastBelief.timeStamp;
-  lastBelief.timeStamp = ros::Time::now().toSec();
+  /*
+   lastBelief.dt = ros::Time::now().toSec() - lastBelief.timeStamp;
+   lastBelief.timeStamp = ros::Time::now().toSec();
 
-  Eigen::VectorXd z = Eigen::VectorXd::Zero(16);
-  z(0) = msg_in->pose.pose.position.x;
-  z(1) = msg_in->pose.pose.position.y;
-  z(2) = msg_in->pose.pose.position.z;
-  z(3) = msg_in->pose.pose.orientation.w;
-  z(4) = msg_in->pose.pose.orientation.x;
-  z(5) = msg_in->pose.pose.orientation.y;
-  z(6) = msg_in->pose.pose.orientation.z;
+   Eigen::VectorXd z = Eigen::VectorXd::Zero(16);
+   z(0) = msg_in->pose.pose.position.x;
+   z(1) = msg_in->pose.pose.position.y;
+   z(2) = msg_in->pose.pose.position.z;
+   z(3) = msg_in->pose.pose.orientation.w;
+   z(4) = msg_in->pose.pose.orientation.x;
+   z(5) = msg_in->pose.pose.orientation.y;
+   z(6) = msg_in->pose.pose.orientation.z;
 
-  UnscentedKf::Belief currStateAndCov = correctState(lastStateTf, z,
-                                                     R_SensorNoiseCov);
-  lastBelief.state = eigenToQuadState(currStateAndCov.state);
-  lastBelief.covariance = currStateAndCov.covariance;
+   UnscentedKf::Belief currStateAndCov = correctState(lastStateTf, z,
+   R_SensorNoiseCov);
+   lastBelief.state = eigenToQuadState(currStateAndCov.state);
+   lastBelief.covariance = currStateAndCov.covariance;
 
-  geometry_msgs::PoseWithCovarianceStamped msg_out;
-  msg_out = publishPoseWithCovStamped(lastBelief);
-  publisher.publish(msg_out);
+   geometry_msgs::PoseWithCovarianceStamped msg_out;
+   msg_out = publishPoseWithCovStamped(lastBelief);
+   publisher.publish(msg_out);
+   */
 }
 
 Eigen::VectorXd QuadUkf::processFunc(const Eigen::VectorXd x, const double dt)
