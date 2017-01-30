@@ -38,17 +38,10 @@ public:
   UnscentedKf();
   virtual ~UnscentedKf() = 0;
 
-  // Asynchronous prediction and correction methods
   UnscentedKf::Belief predictState(Eigen::VectorXd x, Eigen::MatrixXd P,
                                    Eigen::MatrixXd Q, double dt);
   UnscentedKf::Belief correctState(Eigen::VectorXd x, Eigen::MatrixXd P,
                                    Eigen::VectorXd z, Eigen::MatrixXd R);
-
-  //TODO Delete run() (deprecated)
-  // Synchronous, all-in-one prediction/correction method
-  //UnscentedKf::Belief run(Eigen::VectorXd x, Eigen::MatrixXd P,
-  //                        Eigen::VectorXd z, Eigen::MatrixXd Q,
-  //                        Eigen::MatrixXd R, double dt);
 
   virtual Eigen::VectorXd processFunc(Eigen::VectorXd x, double dt) = 0;
   virtual Eigen::VectorXd observationFunc(Eigen::VectorXd z) = 0;

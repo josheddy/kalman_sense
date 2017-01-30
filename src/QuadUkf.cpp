@@ -116,7 +116,6 @@ void QuadUkf::imuCallback(const sensor_msgs::ImuConstPtr &msg)
 void QuadUkf::poseCallback(
     const geometry_msgs::PoseWithCovarianceStampedConstPtr &msg_in)
 {
-  /*
    lastBelief.dt = ros::Time::now().toSec() - lastBelief.timeStamp;
    lastBelief.timeStamp = ros::Time::now().toSec();
 
@@ -135,9 +134,8 @@ void QuadUkf::poseCallback(
    lastBelief.covariance = currStateAndCov.covariance;
 
    geometry_msgs::PoseWithCovarianceStamped msg_out;
-   msg_out = publishPoseWithCovStamped(lastBelief);
+   msg_out = quadBeliefToPoseWithCovStamped(lastBelief);
    publisher.publish(msg_out);
-   */
 }
 
 Eigen::VectorXd QuadUkf::processFunc(const Eigen::VectorXd x, const double dt)
