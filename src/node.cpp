@@ -3,8 +3,6 @@
 
 int main(int argc, char **argv)
 {
-  std::cout << "started" << std::endl;
-
   ros::init(argc, argv, "kalman_sense");
   ros::NodeHandle nh;
   ros::Publisher pub = nh.advertise<geometry_msgs::PoseWithCovarianceStamped>(

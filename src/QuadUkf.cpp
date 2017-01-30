@@ -34,7 +34,7 @@ QuadUkf::QuadUkf(ros::Publisher pub)
   QuadUkf::QuadBelief lastBelief {initTimeStamp, init_dt, initState, initCov};
 
   // Initialize process noise covariance and sensor noise covariance
-  Q_ProcNoiseCov = Eigen::MatrixXd::Identity(_numStates, _numStates); //TODO I changed this to match cov dims in PoseWCovStamped
+  Q_ProcNoiseCov = Eigen::MatrixXd::Identity(_numStates, _numStates);
   Q_ProcNoiseCov *= 0.01;  // default value
   R_SensorNoiseCov = Eigen::MatrixXd::Identity(7, 7);
   R_SensorNoiseCov *= 0.01;  // default value
@@ -63,6 +63,7 @@ geometry_msgs::PoseWithCovarianceStamped quadBeliefToPoseWithCovStamped(
   p.pose.pose.orientation.y = b.state.quaternion.y();
   p.pose.pose.orientation.z = b.state.quaternion.z();
 
+  //TODO Figure out covariance translation from QuadBelief to 6-by-6 PwCS representation
   // Copy covariance matrix from b into the covariance array in p
 //  int numCovElems = b.covariance.rows() * b.covariance.cols();
 //  for (int i = 0; i < numCovElems; ++i)
@@ -112,7 +113,6 @@ void QuadUkf::imuCallback(const sensor_msgs::ImuConstPtr &msg)
  * Updates state based on pose sensor readings (that is, SLAM) and resets
  * lastBelief. Then it publishes lastBelief.
  */
-
 void QuadUkf::poseCallback(
     const geometry_msgs::PoseWithCovarianceStampedConstPtr &msg_in)
 {
@@ -238,8 +238,6 @@ Eigen::VectorXd QuadUkf::quadStateToEigen(const QuadUkf::QuadState qs) const
  */
 QuadUkf::QuadState QuadUkf::eigenToQuadState(const Eigen::VectorXd x) const
 {
-  // Convert Eigen VectorXd to QuadState.
-
   QuadUkf::QuadState qs;
   qs.position(0) = x(0);
   qs.position(1) = x(1);

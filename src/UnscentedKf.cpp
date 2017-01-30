@@ -29,50 +29,45 @@ UnscentedKf::Belief UnscentedKf::predictState(Eigen::VectorXd x,
   return bel;
 }
 
-/*
- UnscentedKf::Belief UnscentedKf::correctState(Eigen::VectorXd x,
- Eigen::MatrixXd P,
- Eigen::VectorXd z,
- Eigen::MatrixXd R)
- {
- //TODO finish changing this to accept a state vector and cov matrix?
- // It seems like I have to completely repeat the prediction step in order to perform the correction step, which doesn't make sense.
+UnscentedKf::Belief UnscentedKf::correctState(Eigen::VectorXd x,
+                                              Eigen::MatrixXd P,
+                                              Eigen::VectorXd z,
+                                              Eigen::MatrixXd R)
+{
+  //TODO finish changing this to accept a state vector and cov matrix
+  int n = x.rows();
+  double scalingCoeff = n + lambda;
+  Eigen::MatrixXd sigmaPts(n, 2 * n + 1);
+  sigmaPts = computeSigmaPoints(x, P, scalingCoeff);
 
- int n = x.rows();
- double scalingCoeff = n + lambda;
- Eigen::MatrixXd sigmaPts(n, 2 * n + 1);
- sigmaPts = computeSigmaPoints(x, P, scalingCoeff);
+  int m = z.rows();
+  UnscentedKf::Transform sensorTf = unscentedSensorTransform(
+      m, sigmaPts, meanWeights, covarianceWeights, R);
+  Eigen::VectorXd zPred = sensorTf.vector;  // Expected sensor vector
+  Eigen::MatrixXd P_zz = sensorTf.covariance;  // Sensor/sensor covariance
 
+  // Compute state/sensor cross-covariance
+  Eigen::MatrixXd P_xz = Eigen::MatrixXd::Zero(n, m);
+  P_xz = stateTf.deviations * covarianceWeights.asDiagonal()
+      * sensorTf.deviations.transpose();
 
- int m = z.rows();
- UnscentedKf::Transform sensorTf = unscentedSensorTransform(
- m, stateTf.sigmaPoints, meanWeights, covarianceWeights, R);
- Eigen::VectorXd zPred = sensorTf.vector;  // Expected sensor vector
- Eigen::MatrixXd P_zz = sensorTf.covariance;  // Sensor/sensor covariance
+  // Compute Kalman gain
+  Eigen::MatrixXd K = Eigen::MatrixXd::Zero(n, m);
+  K = P_xz * P_zz.inverse();
 
- // Compute state/sensor cross-covariance
- Eigen::MatrixXd P_xz = Eigen::MatrixXd::Zero(n, m);
- P_xz = stateTf.deviations * covarianceWeights.asDiagonal()
- * sensorTf.deviations.transpose();
+  // Update state vector
+  Eigen::VectorXd xCorr = Eigen::VectorXd::Zero(n);
+  xCorr = x + K * (z - zPred);
 
- // Compute Kalman gain
- Eigen::MatrixXd K = Eigen::MatrixXd::Zero(n, m);
- K = P_xz * P_zz.inverse();
+  // Update state covariance
+  Eigen::MatrixXd PPred = stateTf.covariance;
+  Eigen::MatrixXd PCorr = Eigen::MatrixXd::Zero(n, n);
+  PCorr = PPred - K * P_xz.transpose();
+  //PCorr = PPred - K * P_zz * K.transpose()?
 
- // Update state vector
- Eigen::VectorXd xCorr = Eigen::VectorXd::Zero(n);
- xCorr = x + K * (z - zPred);
-
- // Update state covariance
- Eigen::MatrixXd PPred = stateTf.covariance;
- Eigen::MatrixXd PCorr = Eigen::MatrixXd::Zero(n, n);
- PCorr = PPred - K * P_xz.transpose();
- //PCorr = PPred - K * P_zz * K.transpose()?
-
- UnscentedKf::Belief bel {xCorr, PCorr};
- return bel;
- }
- */
+  UnscentedKf::Belief bel {xCorr, PCorr};
+  return bel;
+}
 
 /*TODO delete this method
  UnscentedKf::Belief UnscentedKf::run(Eigen::VectorXd x, Eigen::MatrixXd P,
