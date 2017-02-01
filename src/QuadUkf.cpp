@@ -1,4 +1,5 @@
 #include "QuadUkf.h"
+#include <iostream>
 
 QuadUkf::QuadUkf(ros::Publisher pub)
 {
@@ -28,7 +29,9 @@ QuadUkf::QuadUkf(ros::Publisher pub)
   // Define initial belief
   QuadUkf::QuadState initState {initPosition, initQuat, initVelocity,
                                 initAngVel, initAcceleration};
-  Eigen::MatrixXd initCov = Eigen::MatrixXd::Zero(_numStates, _numStates);
+  Eigen::MatrixXd initCov = Eigen::MatrixXd::Identity(_numStates, _numStates);
+  initCov = initCov * 0.01;
+  std::cout << initCov << std::endl;
   double initTimeStamp = ros::Time::now().toSec();
   double init_dt = 0.0001;
   QuadUkf::QuadBelief lastBelief {initTimeStamp, init_dt, initState, initCov};
