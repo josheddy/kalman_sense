@@ -50,7 +50,7 @@ QuadUkf::~QuadUkf()
 {
 }
 
-geometry_msgs::PoseWithCovarianceStamped quadBeliefToPoseWithCovStamped(
+geometry_msgs::PoseWithCovarianceStamped QuadUkf::quadBeliefToPoseWithCovStamped(
     QuadUkf::QuadBelief b)
 {
   geometry_msgs::PoseWithCovarianceStamped p;
@@ -104,7 +104,7 @@ void QuadUkf::imuCallback(const sensor_msgs::ImuConstPtr &msg)
   lastBelief = bel;
 
   geometry_msgs::PoseWithCovarianceStamped p;
-  p = quadBeliefToPoseWithCovStamped(bel);
+  p = quadBeliefToPoseWithCovStamped(lastBelief);
   publisher.publish(p);
   std::cout << "imu cb finished" << std::endl;
 }
@@ -116,26 +116,27 @@ void QuadUkf::imuCallback(const sensor_msgs::ImuConstPtr &msg)
 void QuadUkf::poseCallback(
     const geometry_msgs::PoseWithCovarianceStampedConstPtr &msg_in)
 {
-   lastBelief.dt = ros::Time::now().toSec() - lastBelief.timeStamp;
-   lastBelief.timeStamp = ros::Time::now().toSec();
+  lastBelief.dt = ros::Time::now().toSec() - lastBelief.timeStamp;
+  lastBelief.timeStamp = ros::Time::now().toSec();
 
-   Eigen::VectorXd z = Eigen::VectorXd::Zero(16);
-   z(0) = msg_in->pose.pose.position.x;
-   z(1) = msg_in->pose.pose.position.y;
-   z(2) = msg_in->pose.pose.position.z;
-   z(3) = msg_in->pose.pose.orientation.w;
-   z(4) = msg_in->pose.pose.orientation.x;
-   z(5) = msg_in->pose.pose.orientation.y;
-   z(6) = msg_in->pose.pose.orientation.z;
+  Eigen::VectorXd z = Eigen::VectorXd::Zero(16);
+  z(0) = msg_in->pose.pose.position.x;
+  z(1) = msg_in->pose.pose.position.y;
+  z(2) = msg_in->pose.pose.position.z;
+  z(3) = msg_in->pose.pose.orientation.w;
+  z(4) = msg_in->pose.pose.orientation.x;
+  z(5) = msg_in->pose.pose.orientation.y;
+  z(6) = msg_in->pose.pose.orientation.z;
 
-   UnscentedKf::Belief currStateAndCov = correctState(lastStateTf, z,
-   R_SensorNoiseCov);
-   lastBelief.state = eigenToQuadState(currStateAndCov.state);
-   lastBelief.covariance = currStateAndCov.covariance;
+  Eigen::VectorXd x = quadStateToEigen(lastBelief.state);
+  Eigen::MatrixXd P = lastBelief.covariance;
+  UnscentedKf::Belief currStateAndCov = correctState(x, P, z, R_SensorNoiseCov);
+  lastBelief.state = eigenToQuadState(currStateAndCov.state);
+  lastBelief.covariance = currStateAndCov.covariance;
 
-   geometry_msgs::PoseWithCovarianceStamped msg_out;
-   msg_out = quadBeliefToPoseWithCovStamped(lastBelief);
-   publisher.publish(msg_out);
+  geometry_msgs::PoseWithCovarianceStamped msg_out;
+  msg_out = quadBeliefToPoseWithCovStamped(lastBelief);
+  publisher.publish(msg_out);
 }
 
 Eigen::VectorXd QuadUkf::processFunc(const Eigen::VectorXd x, const double dt)

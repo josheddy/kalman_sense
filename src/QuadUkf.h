@@ -27,8 +27,6 @@ public:
     Eigen::MatrixXd covariance;
   } lastBelief;
 
-  //Transform lastStateTf; //TODO delete all instances of lastStateTf (deprecated)
-
   const int _numStates = 16;
   Eigen::MatrixXd Q_ProcNoiseCov, R_SensorNoiseCov;
 

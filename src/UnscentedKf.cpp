@@ -34,7 +34,6 @@ UnscentedKf::Belief UnscentedKf::correctState(Eigen::VectorXd x,
                                               Eigen::VectorXd z,
                                               Eigen::MatrixXd R)
 {
-  //TODO finish changing this to accept a state vector and cov matrix
   int n = x.rows();
   double scalingCoeff = n + lambda;
   Eigen::MatrixXd sigmaPts(n, 2 * n + 1);
@@ -47,8 +46,10 @@ UnscentedKf::Belief UnscentedKf::correctState(Eigen::VectorXd x,
   Eigen::MatrixXd P_zz = sensorTf.covariance;  // Sensor/sensor covariance
 
   // Compute state/sensor cross-covariance
+  UnscentedKf::SigmaPointSet predPointSet{x, sigmaPts};
+  Eigen::MatrixXd predDeviations = computeDeviations(predPointSet);
   Eigen::MatrixXd P_xz = Eigen::MatrixXd::Zero(n, m);
-  P_xz = stateTf.deviations * covarianceWeights.asDiagonal()
+  P_xz = predDeviations * covarianceWeights.asDiagonal()
       * sensorTf.deviations.transpose();
 
   // Compute Kalman gain
@@ -60,25 +61,13 @@ UnscentedKf::Belief UnscentedKf::correctState(Eigen::VectorXd x,
   xCorr = x + K * (z - zPred);
 
   // Update state covariance
-  Eigen::MatrixXd PPred = stateTf.covariance;
   Eigen::MatrixXd PCorr = Eigen::MatrixXd::Zero(n, n);
-  PCorr = PPred - K * P_xz.transpose();
+  PCorr = P - K * P_xz.transpose();
   //PCorr = PPred - K * P_zz * K.transpose()?
 
   UnscentedKf::Belief bel {xCorr, PCorr};
   return bel;
 }
-
-/*TODO delete this method
- UnscentedKf::Belief UnscentedKf::run(Eigen::VectorXd x, Eigen::MatrixXd P,
- Eigen::VectorXd z, Eigen::MatrixXd Q,
- Eigen::MatrixXd R, double dt)
- {
- UnscentedKf::Transform stateTf = predictState(x, P, Q, dt);
- UnscentedKf::Belief bel = correctState(stateTf, z, R);
- return bel;
- }
- */
 
 UnscentedKf::Transform UnscentedKf::unscentedStateTransform(
     Eigen::MatrixXd sigmaPts, Eigen::VectorXd meanWts, Eigen::VectorXd covWts,
@@ -132,25 +121,21 @@ Eigen::MatrixXd UnscentedKf::computeSigmaPoints(Eigen::VectorXd x,
                                                 Eigen::MatrixXd P,
                                                 double scalingCoeff)
 {
-  std::cout << "computeSigmaPoints called" << std::endl;
-
   // Compute lower Cholesky factor "A" of the given covariance matrix P.
   Eigen::LLT<Eigen::MatrixXd> lltOfCovMat(P);
   Eigen::MatrixXd L = lltOfCovMat.matrixL();
-  //Eigen::LDLT<Eigen::MatrixXd> ldltOfCovMat(P); //TODO I switched to LLT from LDLT. LDLT caused segfault. why?
+  //Eigen::LDLT<Eigen::MatrixXd> ldltOfCovMat(P); //TODO I switched to LLT from LDLT. Using LDLT caused segfault. Why?
   //Eigen::MatrixXd L = ldltOfCovMat.matrixL();
   Eigen::MatrixXd A = scalingCoeff * L;
-  std::cout << "did setup" << std::endl;
 
   // Populate a matrix "Y", which is filled columnwise with the given column
   // vector x.
   int n = x.rows();
   Eigen::MatrixXd Y = Eigen::MatrixXd::Zero(n, n);
   Y = fillMatrixWithVector(x, n);
-  std::cout << "did fillMatWithVec" << std::endl;
 
   Eigen::MatrixXd sigmaPts(n, 2 * n + 1);
-  //sigmaPts << x, Y + A, Y - A;
+  sigmaPts << x, Y + A, Y - A;
   return sigmaPts;
 }
 
