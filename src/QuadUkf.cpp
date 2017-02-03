@@ -6,7 +6,7 @@ QuadUkf::QuadUkf(ros::Publisher pub)
   std::cout << "ctor started" << std::endl;
 
   publisher = pub;
-  kGravityAcc << 0.0, 0.0, 9.81; //TODO is this how the IMU is set up?
+  kGravityAcc << 0.0, 0.0, 9.81; //TODO is this how the IMU is actually set up?
 
   // Set up mean weights and covariance weights
   meanWeights = Eigen::VectorXd::Zero(2 * numStates + 1);
@@ -34,8 +34,8 @@ QuadUkf::QuadUkf(ros::Publisher pub)
   std::cout << initCov << std::endl;
   double initTimeStamp = ros::Time::now().toSec();
   double init_dt = 0.0001;
-  QuadUkf::QuadBelief bel {initTimeStamp, init_dt, initState, initCov};
-  lastBelief = bel;
+  QuadUkf::QuadBelief initBelief {initTimeStamp, init_dt, initState, initCov};
+  lastBelief = initBelief;
 
   // Initialize process noise covariance and sensor noise covariance
   Q_ProcNoiseCov = Eigen::MatrixXd::Identity(numStates, numStates);

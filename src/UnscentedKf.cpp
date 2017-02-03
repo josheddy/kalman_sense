@@ -14,18 +14,19 @@ UnscentedKf::Belief UnscentedKf::predictState(Eigen::VectorXd x,
                                               Eigen::MatrixXd P,
                                               Eigen::MatrixXd Q, double dt)
 {
-  std::cout << "UnscentedKf::predictState called" << std::endl;
-
+  // Compute sigma points around current estimated state
   int n = x.rows();
   double scalingCoeff = n + lambda;
   Eigen::MatrixXd sigmaPts(n, 2 * n + 1);
   sigmaPts = computeSigmaPoints(x, P, scalingCoeff);
 
+  // Perform unscented transform on current estimated state to predict next
+  // state and covariance
   UnscentedKf::Transform tf = unscentedStateTransform(sigmaPts, meanWeights,
                                                       covarianceWeights, Q, dt);
 
+  // Return a new belief
   UnscentedKf::Belief bel {tf.vector, tf.covariance};
-  std::cout << "pred state finished" << std::endl;
   return bel;
 }
 
@@ -121,34 +122,20 @@ Eigen::MatrixXd UnscentedKf::computeSigmaPoints(Eigen::VectorXd x,
                                                 Eigen::MatrixXd P,
                                                 double scalingCoeff)
 {
-  std::cout << "computeSigmaPoints() called" << std::endl;
-  std::cout << "rows in P:\t" << P.rows() << std::endl;
-  // Compute lower Cholesky factor "A" of the given covariance matrix P.
-  Eigen::LLT<Eigen::MatrixXd> lltOfA(P);
-  Eigen::MatrixXd L = lltOfA.matrixL();
-  //std::cout << "made lower triangular matrix" << std::endl;
-  //Eigen::LDLT<Eigen::MatrixXd> ldltOfCovMat(P); //TODO I switched to LLT from LDLT. Using LDLT caused segfault. Why?
-  //std::cout << "made LDLT" << std::endl;
-  //Eigen::MatrixXd L = ldltOfCovMat.matrixL();
-  std::cout << "rows in L:\t" << L.rows() << std::endl;
+  // Compute lower Cholesky factor "A" of the given covariance matrix P
+  Eigen::LDLT<Eigen::MatrixXd> ldltOfCovMat(P);
+  Eigen::MatrixXd L = ldltOfCovMat.matrixL();
   Eigen::MatrixXd A = scalingCoeff * L;
-  std::cout << "made 'A' matrix" << std::endl;
-  std::cout << "rows in A:\t" << A.rows() << std::endl;
-  std::cout << "cols in A:\t" << A.cols() << std::endl;
 
-  // Populate a matrix "Y", which is filled columnwise with the given column
-  // vector x.
+  // Create a matrix "Y", which is then filled columnwise with the given
+  // column vector x
   int n = x.rows();
-  std::cout << "n:\t" << x.rows() << std::endl;
   Eigen::MatrixXd Y = Eigen::MatrixXd::Zero(n, n);
   Y = fillMatrixWithVector(x, n);
-  std::cout << "made Y matrix" << std::endl;
-  std::cout << "rows in Y:\t" << Y.rows() << std::endl;
-  std::cout << "cols in Y:\t" << Y.cols() << std::endl;
 
+  // Create and populate sigma point matrix
   Eigen::MatrixXd sigmaPts(n, 2 * n + 1);
   sigmaPts << x, Y + A, Y - A;
-  std::cout << "computeSigmaPoints() finished" << std::endl;
   return sigmaPts;
 }
 
