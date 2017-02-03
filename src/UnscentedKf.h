@@ -26,14 +26,14 @@ public:
     Eigen::MatrixXd covariance;
   };
 
-  int _numStates;
+  int numStates;
   Eigen::VectorXd meanWeights, covarianceWeights;
 
   // Tunable parameters
   const double alpha = 0.0003;
   const double kappa = 0;
   const double beta = 2;
-  const double lambda = (alpha * alpha) * (_numStates + kappa) - _numStates;
+  const double lambda = pow(alpha, 2) * (numStates + kappa) - numStates;
 
   UnscentedKf();
   virtual ~UnscentedKf() = 0;

@@ -6,14 +6,14 @@ QuadUkf::QuadUkf(ros::Publisher pub)
   std::cout << "ctor started" << std::endl;
 
   publisher = pub;
-  kGravityAcc << 0.0, 0.0, 9.81;//TODO is this how the IMU is set up?
+  kGravityAcc << 0.0, 0.0, 9.81; //TODO is this how the IMU is set up?
 
   // Set up mean weights and covariance weights
-  meanWeights = Eigen::VectorXd::Zero(2 * _numStates + 1);
-  meanWeights(0) = lambda / (_numStates + lambda);
-  for (int i = 1; i < _numStates; i++)
+  meanWeights = Eigen::VectorXd::Zero(2 * numStates + 1);
+  meanWeights(0) = lambda / (numStates + lambda);
+  for (int i = 1; i < numStates; i++)
   {
-    meanWeights(i) = 1 / (2 * _numStates + lambda);
+    meanWeights(i) = 1 / (2 * numStates + lambda);
   }
   covarianceWeights = meanWeights;
   covarianceWeights(0) += (1 - alpha * alpha + beta);
@@ -29,7 +29,7 @@ QuadUkf::QuadUkf(ros::Publisher pub)
   // Define initial belief
   QuadUkf::QuadState initState {initPosition, initQuat, initVelocity,
                                 initAngVel, initAcceleration};
-  Eigen::MatrixXd initCov = Eigen::MatrixXd::Identity(_numStates, _numStates);
+  Eigen::MatrixXd initCov = Eigen::MatrixXd::Identity(numStates, numStates);
   initCov = initCov * 0.01;
   std::cout << initCov << std::endl;
   double initTimeStamp = ros::Time::now().toSec();
@@ -38,13 +38,13 @@ QuadUkf::QuadUkf(ros::Publisher pub)
   lastBelief = bel;
 
   // Initialize process noise covariance and sensor noise covariance
-  Q_ProcNoiseCov = Eigen::MatrixXd::Identity(_numStates, _numStates);
+  Q_ProcNoiseCov = Eigen::MatrixXd::Identity(numStates, numStates);
   Q_ProcNoiseCov *= 0.01;  // default value
   R_SensorNoiseCov = Eigen::MatrixXd::Identity(7, 7);
   R_SensorNoiseCov *= 0.01;  // default value
 
   // Linear sensor map matrix H (z = H * x)
-  H_SensorMap = Eigen::MatrixXd::Identity(_numStates, _numStates);
+  H_SensorMap = Eigen::MatrixXd::Identity(numStates, numStates);
   H_SensorMap.block<6, 6>(7, 7) = Eigen::MatrixXd::Zero(6, 6);
 
   std::cout << "ctor finished" << std::endl;
@@ -59,7 +59,7 @@ geometry_msgs::PoseWithCovarianceStamped QuadUkf::quadBeliefToPoseWithCovStamped
 {
   geometry_msgs::PoseWithCovarianceStamped p;
   p.header.stamp.sec = b.timeStamp;
-  p.header.stamp.nsec = (b.timeStamp-floor(b.timeStamp))*pow(10,9);
+  p.header.stamp.nsec = (b.timeStamp - floor(b.timeStamp)) * pow(10, 9);
   p.pose.pose.position.x = b.state.position(0);
   p.pose.pose.position.y = b.state.position(1);
   p.pose.pose.position.z = b.state.position(2);
@@ -80,51 +80,54 @@ geometry_msgs::PoseWithCovarianceStamped QuadUkf::quadBeliefToPoseWithCovStamped
 }
 
 /*
- * Predicts next state based on IMU readings and then resets lastBelief to
- * reflect that prediction, then publishes lastBelief.
+ * Predicts next state based on IMU readings, resets lastBelief to
+ * reflect that prediction, then publishes lastBelief as a
+ * geometry_msgs::PoseWithCovarianceStamped message.
  */
-void QuadUkf::imuCallback(const sensor_msgs::ImuConstPtr &msg)
+void QuadUkf::imuCallback(const sensor_msgs::ImuConstPtr &msg_in)
 {
   std::cout << "imu cb started" << std::endl;
 
   // Compute time step "dt"
   double now = ros::Time::now().toSec();
-  lastBelief.dt = now - msg->header.stamp.toSec(); //TODO change poseCallback to reflect this
+  lastBelief.dt = now - msg_in->header.stamp.toSec();
 
-  lastBelief.state.angular_velocity(0) = msg->angular_velocity.x;
-  lastBelief.state.angular_velocity(1) = msg->angular_velocity.y;
-  lastBelief.state.angular_velocity(2) = msg->angular_velocity.z;
-  lastBelief.state.acceleration(0) = msg->linear_acceleration.x;
-  lastBelief.state.acceleration(1) = msg->linear_acceleration.y;
-  lastBelief.state.acceleration(2) = msg->linear_acceleration.z;
+  // Extract inertial data from IMU message
+  lastBelief.state.angular_velocity(0) = msg_in->angular_velocity.x;
+  lastBelief.state.angular_velocity(1) = msg_in->angular_velocity.y;
+  lastBelief.state.angular_velocity(2) = msg_in->angular_velocity.z;
+  lastBelief.state.acceleration(0) = msg_in->linear_acceleration.x;
+  lastBelief.state.acceleration(1) = msg_in->linear_acceleration.y;
+  lastBelief.state.acceleration(2) = msg_in->linear_acceleration.z;
 
-  // Predict next state and reset lastStateTf to reflect that state.
+  // Predict next state and reset lastBelief
   Eigen::VectorXd x = quadStateToEigen(lastBelief.state);
   UnscentedKf::Belief b = predictState(x, lastBelief.covariance, Q_ProcNoiseCov,
                                        lastBelief.dt);
+  QuadUkf::QuadBelief qb {now, lastBelief.dt, eigenToQuadState(b.state),
+                          b.covariance};
+  lastBelief = qb;
 
-  // Reset lastBelief
-  QuadUkf::QuadBelief bel {now, lastBelief.dt, eigenToQuadState(b.state),
-                           b.covariance};
-  lastBelief = bel;
-
-  geometry_msgs::PoseWithCovarianceStamped p;
-  p = quadBeliefToPoseWithCovStamped(lastBelief);
-  publisher.publish(p);
+  // Publish new pose message
+  geometry_msgs::PoseWithCovarianceStamped msg_out;
+  msg_out = quadBeliefToPoseWithCovStamped(lastBelief);
+  publisher.publish(msg_out);
   std::cout << "imu cb finished" << std::endl;
 }
 
 /*
- * Updates state based on pose sensor readings (that is, SLAM) and resets
+ * Corrects state based on pose sensor readings (that is, SLAM) and resets
  * lastBelief. Then it publishes lastBelief.
  */
 void QuadUkf::poseCallback(
     const geometry_msgs::PoseWithCovarianceStampedConstPtr &msg_in)
 {
+  // Determine time step "dt" and set time stamp
   double now = ros::Time::now().toSec();
   lastBelief.dt = now - msg_in->header.stamp.toSec();
   lastBelief.timeStamp = now;
 
+  // Extract pose information from pose sensor message
   Eigen::VectorXd z = Eigen::VectorXd::Zero(16);
   z(0) = msg_in->pose.pose.position.x;
   z(1) = msg_in->pose.pose.position.y;
@@ -134,12 +137,14 @@ void QuadUkf::poseCallback(
   z(5) = msg_in->pose.pose.orientation.y;
   z(6) = msg_in->pose.pose.orientation.z;
 
+  // Correct belief and reset lastBelief
   Eigen::VectorXd x = quadStateToEigen(lastBelief.state);
   Eigen::MatrixXd P = lastBelief.covariance;
   UnscentedKf::Belief currStateAndCov = correctState(x, P, z, R_SensorNoiseCov);
   lastBelief.state = eigenToQuadState(currStateAndCov.state);
   lastBelief.covariance = currStateAndCov.covariance;
 
+  // Publish new pose message
   geometry_msgs::PoseWithCovarianceStamped msg_out;
   msg_out = quadBeliefToPoseWithCovStamped(lastBelief);
   publisher.publish(msg_out);
@@ -213,7 +218,7 @@ Eigen::MatrixXd QuadUkf::generateBigOmegaMat(const Eigen::Vector3d w) const
  */
 Eigen::VectorXd QuadUkf::quadStateToEigen(const QuadUkf::QuadState qs) const
 {
-  Eigen::VectorXd x(_numStates);
+  Eigen::VectorXd x(numStates);
   x(0) = qs.position(0);
   x(1) = qs.position(1);
   x(2) = qs.position(2);

@@ -2,7 +2,7 @@
 #include <iostream>
 
 UnscentedKf::UnscentedKf() :
-    _numStates(16) //TODO is this necessary? What does this do?
+    numStates(16) //TODO is this necessary? What does this do?
 {
 }
 
