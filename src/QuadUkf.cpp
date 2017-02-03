@@ -6,7 +6,7 @@ QuadUkf::QuadUkf(ros::Publisher pub)
   std::cout << "ctor started" << std::endl;
 
   publisher = pub;
-  kGravityAcc << 0.0, 0.0, 9.81;
+  kGravityAcc << 0.0, 0.0, 9.81;//TODO is this how the IMU is set up?
 
   // Set up mean weights and covariance weights
   meanWeights = Eigen::VectorXd::Zero(2 * _numStates + 1);
@@ -34,7 +34,8 @@ QuadUkf::QuadUkf(ros::Publisher pub)
   std::cout << initCov << std::endl;
   double initTimeStamp = ros::Time::now().toSec();
   double init_dt = 0.0001;
-  QuadUkf::QuadBelief lastBelief {initTimeStamp, init_dt, initState, initCov};
+  QuadUkf::QuadBelief bel {initTimeStamp, init_dt, initState, initCov};
+  lastBelief = bel;
 
   // Initialize process noise covariance and sensor noise covariance
   Q_ProcNoiseCov = Eigen::MatrixXd::Identity(_numStates, _numStates);
@@ -58,6 +59,7 @@ geometry_msgs::PoseWithCovarianceStamped QuadUkf::quadBeliefToPoseWithCovStamped
 {
   geometry_msgs::PoseWithCovarianceStamped p;
   p.header.stamp.sec = b.timeStamp;
+  p.header.stamp.nsec = (b.timeStamp-floor(b.timeStamp))*pow(10,9);
   p.pose.pose.position.x = b.state.position(0);
   p.pose.pose.position.y = b.state.position(1);
   p.pose.pose.position.z = b.state.position(2);
@@ -86,7 +88,8 @@ void QuadUkf::imuCallback(const sensor_msgs::ImuConstPtr &msg)
   std::cout << "imu cb started" << std::endl;
 
   // Compute time step "dt"
-  lastBelief.dt = ros::Time::now().toSec() - lastBelief.timeStamp;
+  double now = ros::Time::now().toSec();
+  lastBelief.dt = now - msg->header.stamp.toSec(); //TODO change poseCallback to reflect this
 
   lastBelief.state.angular_velocity(0) = msg->angular_velocity.x;
   lastBelief.state.angular_velocity(1) = msg->angular_velocity.y;
@@ -101,7 +104,6 @@ void QuadUkf::imuCallback(const sensor_msgs::ImuConstPtr &msg)
                                        lastBelief.dt);
 
   // Reset lastBelief
-  double now = ros::Time::now().toSec();
   QuadUkf::QuadBelief bel {now, lastBelief.dt, eigenToQuadState(b.state),
                            b.covariance};
   lastBelief = bel;
@@ -119,8 +121,9 @@ void QuadUkf::imuCallback(const sensor_msgs::ImuConstPtr &msg)
 void QuadUkf::poseCallback(
     const geometry_msgs::PoseWithCovarianceStampedConstPtr &msg_in)
 {
-  lastBelief.dt = ros::Time::now().toSec() - lastBelief.timeStamp;
-  lastBelief.timeStamp = ros::Time::now().toSec();
+  double now = ros::Time::now().toSec();
+  lastBelief.dt = now - msg_in->header.stamp.toSec();
+  lastBelief.timeStamp = now;
 
   Eigen::VectorXd z = Eigen::VectorXd::Zero(16);
   z(0) = msg_in->pose.pose.position.x;
