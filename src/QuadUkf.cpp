@@ -162,12 +162,16 @@ Eigen::VectorXd QuadUkf::processFunc(const Eigen::VectorXd x, const double dt)
   QuadUkf::QuadState currState;
 
   // Compute orientation
+  Eigen::Quaterniond gyroQuat;
+  gyroQuat.coeffs() = 0, prevState.angular_velocity(0), prevState.angular_velocity(1), prevState.angular_velocity(2);
   Eigen::MatrixXd Omega = generateBigOmegaMat(prevState.angular_velocity);
+  //currState.quaternion.coeffs() = prevState.quaternion.coeffs()
+  //    + 0.5 * Omega * prevState.quaternion.coeffs() * dt;
   currState.quaternion.coeffs() = prevState.quaternion.coeffs()
-      + 0.5 * Omega * currState.quaternion.coeffs() * dt;
+        + 0.5 * Omega * gyroQuat.normalized() * dt;
   currState.quaternion.normalize();
 
-  // Rotate measured accelerations into inertial frame
+  // Rotate current and previous accelerations into inertial frame, then average them
   Eigen::Vector3d inertialAcc;
   inertialAcc = (currState.quaternion.toRotationMatrix()
       * currState.acceleration
