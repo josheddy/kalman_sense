@@ -30,7 +30,7 @@ public:
   Eigen::VectorXd meanWeights, covarianceWeights;
 
   // Tunable parameters
-  const double alpha = 0.0003;
+  const double alpha = 0.001;
   const double kappa = 0;
   const double beta = 2;
   const double lambda = pow(alpha, 2) * (numStates + kappa) - numStates;

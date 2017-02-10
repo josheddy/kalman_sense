@@ -42,7 +42,7 @@ public:
 
 private:
   ros::Publisher publisher;
-  Eigen::Vector3d kGravityAcc; // Gravity vector in inertial frame
+  Eigen::Vector3d gravityAcc; // Gravity vector in inertial frame
   Eigen::MatrixXd H_SensorMap; // Observation model matrix H
 
   geometry_msgs::PoseWithCovarianceStamped quadBeliefToPoseWithCovStamped(

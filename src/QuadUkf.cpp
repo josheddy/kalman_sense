@@ -6,7 +6,7 @@ QuadUkf::QuadUkf(ros::Publisher pub)
   std::cout << "ctor started" << std::endl;
 
   publisher = pub;
-  kGravityAcc << 0.0, 0.0, 9.81; //TODO is this how the IMU is actually set up?
+  gravityAcc << 0.0, 0.0, -9.81;
 
   // Set up mean weights and covariance weights
   meanWeights = Eigen::VectorXd::Zero(2 * numStates + 1);
@@ -31,7 +31,6 @@ QuadUkf::QuadUkf(ros::Publisher pub)
                                 initAngVel, initAcceleration};
   Eigen::MatrixXd initCov = Eigen::MatrixXd::Identity(numStates, numStates);
   initCov = initCov * 0.01;
-  std::cout << initCov << std::endl;
   double initTimeStamp = ros::Time::now().toSec();
   double init_dt = 0.0001;
   QuadUkf::QuadBelief initBelief {initTimeStamp, init_dt, initState, initCov};
@@ -47,36 +46,12 @@ QuadUkf::QuadUkf(ros::Publisher pub)
   H_SensorMap = Eigen::MatrixXd::Identity(numStates, numStates);
   H_SensorMap.block<6, 6>(7, 7) = Eigen::MatrixXd::Zero(6, 6);
 
+  std::cout << quadStateToEigen(lastBelief.state).transpose() << std::endl;
   std::cout << "ctor finished" << std::endl;
 }
 
 QuadUkf::~QuadUkf()
 {
-}
-
-geometry_msgs::PoseWithCovarianceStamped QuadUkf::quadBeliefToPoseWithCovStamped(
-    QuadUkf::QuadBelief b)
-{
-  geometry_msgs::PoseWithCovarianceStamped p;
-  p.header.stamp.sec = b.timeStamp;
-  p.header.stamp.nsec = (b.timeStamp - floor(b.timeStamp)) * pow(10, 9);
-  p.pose.pose.position.x = b.state.position(0);
-  p.pose.pose.position.y = b.state.position(1);
-  p.pose.pose.position.z = b.state.position(2);
-  p.pose.pose.orientation.w = b.state.quaternion.w();
-  p.pose.pose.orientation.x = b.state.quaternion.x();
-  p.pose.pose.orientation.y = b.state.quaternion.y();
-  p.pose.pose.orientation.z = b.state.quaternion.z();
-
-  //TODO Figure out covariance translation from QuadBelief to 6-by-6 PwCS representation
-  // Copy covariance matrix from b into the covariance array in p
-//  int numCovElems = b.covariance.rows() * b.covariance.cols();
-//  for (int i = 0; i < numCovElems; ++i)
-//  {
-//    p.pose.covariance[i] = b.covariance(i);
-//  }
-
-  return p;
 }
 
 /*
@@ -100,6 +75,9 @@ void QuadUkf::imuCallback(const sensor_msgs::ImuConstPtr &msg_in)
   lastBelief.state.acceleration(1) = msg_in->linear_acceleration.y;
   lastBelief.state.acceleration(2) = msg_in->linear_acceleration.z;
 
+  std::cout << "IMU data read in" << std::endl;
+  std::cout << quadStateToEigen(lastBelief.state) << std::endl;
+
   // Predict next state and reset lastBelief
   Eigen::VectorXd x = quadStateToEigen(lastBelief.state);
   UnscentedKf::Belief b = predictState(x, lastBelief.covariance, Q_ProcNoiseCov,
@@ -107,6 +85,9 @@ void QuadUkf::imuCallback(const sensor_msgs::ImuConstPtr &msg_in)
   QuadUkf::QuadBelief qb {now, lastBelief.dt, eigenToQuadState(b.state),
                           b.covariance};
   lastBelief = qb;
+
+  std::cout << "post-prediction:" << std::endl;
+  std::cout << quadStateToEigen(lastBelief.state) << std::endl;
 
   // Publish new pose message
   geometry_msgs::PoseWithCovarianceStamped msg_out;
@@ -150,6 +131,31 @@ void QuadUkf::poseCallback(
   publisher.publish(msg_out);
 }
 
+geometry_msgs::PoseWithCovarianceStamped QuadUkf::quadBeliefToPoseWithCovStamped(
+    QuadUkf::QuadBelief b)
+{
+  geometry_msgs::PoseWithCovarianceStamped p;
+  p.header.stamp.sec = b.timeStamp;
+  p.header.stamp.nsec = (b.timeStamp - floor(b.timeStamp)) * pow(10, 9);
+  p.pose.pose.position.x = b.state.position(0);
+  p.pose.pose.position.y = b.state.position(1);
+  p.pose.pose.position.z = b.state.position(2);
+  p.pose.pose.orientation.w = b.state.quaternion.w();
+  p.pose.pose.orientation.x = b.state.quaternion.x();
+  p.pose.pose.orientation.y = b.state.quaternion.y();
+  p.pose.pose.orientation.z = b.state.quaternion.z();
+
+  //TODO Figure out covariance translation from QuadBelief to 6-by-6 PwCS representation
+  // Copy covariance matrix from b into the covariance array in p
+//  int numCovElems = b.covariance.rows() * b.covariance.cols();
+//  for (int i = 0; i < numCovElems; ++i)
+//  {
+//    p.pose.covariance[i] = b.covariance(i);
+//  }
+
+  return p;
+}
+
 Eigen::VectorXd QuadUkf::processFunc(const Eigen::VectorXd x, const double dt)
 {
   QuadUkf::QuadState prevState = eigenToQuadState(x);
@@ -167,7 +173,7 @@ Eigen::VectorXd QuadUkf::processFunc(const Eigen::VectorXd x, const double dt)
       * currState.acceleration
       + prevState.quaternion.toRotationMatrix() * prevState.acceleration) / 2.0;
 
-  currState.velocity = prevState.velocity + (inertialAcc - kGravityAcc) * dt;
+  currState.velocity = prevState.velocity + (inertialAcc - gravityAcc) * dt;
 
   currState.position = prevState.position
       + ((currState.velocity + prevState.velocity) / 2.0) * dt;

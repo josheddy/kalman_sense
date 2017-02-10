@@ -2,7 +2,7 @@
 #include <iostream>
 
 UnscentedKf::UnscentedKf() :
-    numStates(16) //TODO is this necessary? What does this do?
+    numStates(16)
 {
 }
 
@@ -16,7 +16,7 @@ UnscentedKf::Belief UnscentedKf::predictState(Eigen::VectorXd x,
 {
   // Compute sigma points around current estimated state
   int n = x.rows();
-  double scalingCoeff = n + lambda;
+  double scalingCoeff = pow(n + lambda, 0.5);
   Eigen::MatrixXd sigmaPts(n, 2 * n + 1);
   sigmaPts = computeSigmaPoints(x, P, scalingCoeff);
 
@@ -41,13 +41,15 @@ UnscentedKf::Belief UnscentedKf::correctState(Eigen::VectorXd x,
   sigmaPts = computeSigmaPoints(x, P, scalingCoeff);
 
   int m = z.rows();
-  UnscentedKf::Transform sensorTf = unscentedSensorTransform(
-      m, sigmaPts, meanWeights, covarianceWeights, R);
+  UnscentedKf::Transform sensorTf = unscentedSensorTransform(m, sigmaPts,
+                                                             meanWeights,
+                                                             covarianceWeights,
+                                                             R);
   Eigen::VectorXd zPred = sensorTf.vector;  // Expected sensor vector
   Eigen::MatrixXd P_zz = sensorTf.covariance;  // Sensor/sensor covariance
 
   // Compute state/sensor cross-covariance
-  UnscentedKf::SigmaPointSet predPointSet{x, sigmaPts};
+  UnscentedKf::SigmaPointSet predPointSet {x, sigmaPts};
   Eigen::MatrixXd predDeviations = computeDeviations(predPointSet);
   Eigen::MatrixXd P_xz = Eigen::MatrixXd::Zero(n, m);
   P_xz = predDeviations * covarianceWeights.asDiagonal()
@@ -83,12 +85,16 @@ UnscentedKf::Transform UnscentedKf::unscentedStateTransform(
 
   vec = sample.vector;
   sigmas = sample.sigmaPoints;
+  std::cout << "vec from state UT\n" << vec << std::endl;
+  std::cout << "sigma pts from state UT\n" << sigmas << std::endl;
 
   Eigen::MatrixXd devs = Eigen::MatrixXd::Zero(n, L);
   devs = computeDeviations(sample);
+  std::cout << "deviations from state UT\n" << devs << std::endl;
 
   Eigen::MatrixXd cov = Eigen::MatrixXd::Zero(n, n);
   cov = computeCovariance(devs, covWts, noiseCov);
+  std::cout << "cov mat from state UT\n" << cov << std::endl;
 
   UnscentedKf::Transform out {vec, sigmas, cov, devs};
   return out;
@@ -123,8 +129,10 @@ Eigen::MatrixXd UnscentedKf::computeSigmaPoints(Eigen::VectorXd x,
                                                 double scalingCoeff)
 {
   // Compute lower Cholesky factor "A" of the given covariance matrix P
-  Eigen::LDLT<Eigen::MatrixXd> ldltOfCovMat(P);
-  Eigen::MatrixXd L = ldltOfCovMat.matrixL();
+  //Eigen::LDLT<Eigen::MatrixXd> ldltOfCovMat(P);
+  //Eigen::MatrixXd L = ldltOfCovMat.matrixL();
+  Eigen::LLT<Eigen::MatrixXd> lltOfCovMat(P);
+  Eigen::MatrixXd L = lltOfCovMat.matrixL().transpose();
   Eigen::MatrixXd A = scalingCoeff * L;
 
   // Create a matrix "Y", which is then filled columnwise with the given
