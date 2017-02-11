@@ -1,4 +1,5 @@
 #include "QuadUkf.h"
+#include <math.h>
 #include <iostream>
 
 QuadUkf::QuadUkf(ros::Publisher pub)
@@ -161,15 +162,17 @@ Eigen::VectorXd QuadUkf::processFunc(const Eigen::VectorXd x, const double dt)
   QuadUkf::QuadState prevState = eigenToQuadState(x);
   QuadUkf::QuadState currState;
 
-  // Compute orientation
-  Eigen::Quaterniond gyroQuat;
-  gyroQuat.coeffs() = 0, prevState.angular_velocity(0), prevState.angular_velocity(1), prevState.angular_velocity(2);
-  Eigen::MatrixXd Omega = generateBigOmegaMat(prevState.angular_velocity);
+  // Compute orientation via zero-th order forward integration
+  Eigen::Quaterniond deltaQuat;
+  deltaQuat.w() = cos(prevState.angular_velocity.norm() * dt / 2.0);
+  deltaQuat.vec() = (1 / prevState.angular_velocity.norm())
+      * prevState.angular_velocity
+      * sin(prevState.angular_velocity.norm() * dt / 2.0);
+  //Eigen::MatrixXd Omega = generateBigOmegaMat(prevState.angular_velocity);
   //currState.quaternion.coeffs() = prevState.quaternion.coeffs()
   //    + 0.5 * Omega * prevState.quaternion.coeffs() * dt;
-  currState.quaternion.coeffs() = prevState.quaternion.coeffs()
-        + 0.5 * Omega * gyroQuat.normalized() * dt;
-  currState.quaternion.normalize();
+  currState.quaternion = (prevState.quaternion * deltaQuat);
+  currState.quaternion = currState.quaternion.normalized();
 
   // Rotate current and previous accelerations into inertial frame, then average them
   Eigen::Vector3d inertialAcc;
