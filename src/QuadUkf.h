@@ -49,6 +49,7 @@ private:
       QuadUkf::QuadBelief b);
   Eigen::MatrixXd generateBigOmegaMat(
       const Eigen::Vector3d angular_velocity) const;
+  Eigen::MatrixXd bigOmegaMat2(const Eigen::Vector3d w) const;
   Eigen::VectorXd quadStateToEigen(const QuadUkf::QuadState qs) const;
   QuadUkf::QuadState eigenToQuadState(const Eigen::VectorXd x) const;
 };

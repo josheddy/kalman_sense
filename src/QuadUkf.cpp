@@ -14,8 +14,11 @@ QuadUkf::QuadUkf(ros::Publisher pub)
   meanWeights(0) = lambda / (numStates + lambda);
   for (int i = 1; i < numStates; i++)
   {
-    meanWeights(i) = 1 / (2 * numStates + lambda);
+    meanWeights(i) = 1 / (2 * (numStates + lambda));
   }
+  meanWeights = meanWeights / meanWeights.sum();
+  std::cout << "sum of mean weights:\t" << meanWeights.sum() << std::endl;
+
   covarianceWeights = meanWeights;
   covarianceWeights(0) += (1 - alpha * alpha + beta);
 
@@ -43,9 +46,9 @@ QuadUkf::QuadUkf(ros::Publisher pub)
   R_SensorNoiseCov = Eigen::MatrixXd::Identity(7, 7);
   R_SensorNoiseCov *= 0.01;  // default value
 
-  // Linear sensor map matrix H (z = H * x)
+  // Linear sensor map matrix H (z = H * x) //TODO create a more accurate sensor model?
   H_SensorMap = Eigen::MatrixXd::Identity(numStates, numStates);
-  H_SensorMap.block<6, 6>(7, 7) = Eigen::MatrixXd::Zero(6, 6);
+  //H_SensorMap.block<6, 6>(7, 7) = Eigen::MatrixXd::Zero(6, 6);
 
   std::cout << quadStateToEigen(lastBelief.state).transpose() << std::endl;
   std::cout << "ctor finished" << std::endl;
@@ -163,27 +166,30 @@ Eigen::VectorXd QuadUkf::processFunc(const Eigen::VectorXd x, const double dt)
   QuadUkf::QuadState currState;
 
   // Compute orientation via zero-th order forward integration
-  Eigen::Quaterniond deltaQuat;
-  deltaQuat.w() = cos(prevState.angular_velocity.norm() * dt / 2.0);
-  deltaQuat.vec() = (1 / prevState.angular_velocity.norm())
-      * prevState.angular_velocity
-      * sin(prevState.angular_velocity.norm() * dt / 2.0);
-  //Eigen::MatrixXd Omega = generateBigOmegaMat(prevState.angular_velocity);
-  //currState.quaternion.coeffs() = prevState.quaternion.coeffs()
-  //    + 0.5 * Omega * prevState.quaternion.coeffs() * dt;
-  currState.quaternion = (prevState.quaternion * deltaQuat);
-  currState.quaternion = currState.quaternion.normalized();
+//  Eigen::Quaterniond deltaQuat;
+//  deltaQuat.w() = cos(prevState.angular_velocity.norm() * dt / 2.0);
+//  deltaQuat.vec() = (1 / prevState.angular_velocity.norm())
+//      * prevState.angular_velocity
+//      * sin(prevState.angular_velocity.norm() * dt / 2.0);
+  Eigen::MatrixXd Omega = generateBigOmegaMat(prevState.angular_velocity);
+  currState.quaternion.coeffs() = prevState.quaternion.coeffs()
+      + 0.5 * Omega * prevState.quaternion.coeffs() * dt;
+  //currState.quaternion = (prevState.quaternion * deltaQuat);
+  currState.quaternion = currState.quaternion.coeffs()
+      / currState.quaternion.norm();
 
   // Rotate current and previous accelerations into inertial frame, then average them
-  Eigen::Vector3d inertialAcc;
-  inertialAcc = (currState.quaternion.toRotationMatrix()
-      * currState.acceleration
-      + prevState.quaternion.toRotationMatrix() * prevState.acceleration) / 2.0;
+  currState.acceleration = ((currState.quaternion.toRotationMatrix()
+      * prevState.acceleration
+      + prevState.quaternion.toRotationMatrix() * lastBelief.state.acceleration)
+      / 2.0) - gravityAcc;
 
-  currState.velocity = prevState.velocity + (inertialAcc - gravityAcc) * dt;
+  currState.velocity = prevState.velocity + currState.acceleration * dt;
 
   currState.position = prevState.position
       + ((currState.velocity + prevState.velocity) / 2.0) * dt;
+
+  currState.angular_velocity = prevState.angular_velocity;
 
   return quadStateToEigen(currState);
 }
@@ -199,6 +205,7 @@ Eigen::VectorXd QuadUkf::observationFunc(const Eigen::VectorXd stateVec)
  */
 Eigen::MatrixXd QuadUkf::generateBigOmegaMat(const Eigen::Vector3d w) const
 {
+  // (x, y, z, w) convention
   Eigen::MatrixXd Omega(4, 4);
 
   // Upper left 3-by-3 block: negative skew-symmetric matrix of vector w
@@ -226,6 +233,36 @@ Eigen::MatrixXd QuadUkf::generateBigOmegaMat(const Eigen::Vector3d w) const
   return Omega;
 }
 
+Eigen::MatrixXd QuadUkf::bigOmegaMat2(const Eigen::Vector3d w) const
+{
+  // (w, x, y, z) convention
+  Eigen::MatrixXd Omega(4, 4);
+
+  // Upper left corner: zero
+  Omega(0, 0) = 0;
+
+  // Upper right 1-by-3 block: negative transpose of vector w
+  Omega.block<1, 3>(0, 1) = -w.transpose();
+
+  // Lower left 3-by-1 block: vector w
+  Omega.block<3, 1>(1, 0) = w;
+
+  // Lower right 3-by-3 block: negative skew-symmetric matrix of w
+  Omega(1, 1) = 0;
+  Omega(1, 2) = w(2);
+  Omega(1, 3) = -w(1);
+
+  Omega(2, 1) = -w(2);
+  Omega(2, 2) = 0;
+  Omega(2, 3) = w(1);
+
+  Omega(3, 1) = w(2);
+  Omega(3, 2) = -w(1);
+  Omega(3, 3) = 0;
+
+  return Omega;
+}
+
 /*
  * Convert a QuadUkf::QuadState to an Eigen::VectorXd.
  */
@@ -236,10 +273,10 @@ Eigen::VectorXd QuadUkf::quadStateToEigen(const QuadUkf::QuadState qs) const
   x(1) = qs.position(1);
   x(2) = qs.position(2);
 
-  x(3) = qs.quaternion.w();
-  x(4) = qs.quaternion.x();
-  x(5) = qs.quaternion.y();
-  x(6) = qs.quaternion.z();
+  x(3) = qs.quaternion.x();
+  x(4) = qs.quaternion.y();
+  x(5) = qs.quaternion.z();
+  x(6) = qs.quaternion.w();
 
   x(7) = qs.velocity(0);
   x(8) = qs.velocity(1);
@@ -266,10 +303,10 @@ QuadUkf::QuadState QuadUkf::eigenToQuadState(const Eigen::VectorXd x) const
   qs.position(1) = x(1);
   qs.position(2) = x(2);
 
-  qs.quaternion.w() = x(3);
-  qs.quaternion.x() = x(4);
-  qs.quaternion.y() = x(5);
-  qs.quaternion.z() = x(6);
+  qs.quaternion.x() = x(3);
+  qs.quaternion.y() = x(4);
+  qs.quaternion.z() = x(5);
+  qs.quaternion.w() = x(6);
 
   qs.velocity(0) = x(7);
   qs.velocity(1) = x(8);
