@@ -28,6 +28,8 @@ public:
     Eigen::MatrixXd covariance;
   } lastBelief;
 
+  double now;
+
   const int numStates = 16; //TODO Do I still need this based on how numStates is set in UnscentedKf.cpp?
   Eigen::MatrixXd Q_ProcNoiseCov, R_SensorNoiseCov;
 

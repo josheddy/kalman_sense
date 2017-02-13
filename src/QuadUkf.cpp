@@ -106,7 +106,7 @@ void QuadUkf::poseCallback(
     const geometry_msgs::PoseWithCovarianceStampedConstPtr &msg_in)
 {
   // Determine time step "dt" and set time stamp
-  double now = ros::Time::now().toSec();
+  now = ros::Time::now().toSec();
   lastBelief.dt = now - msg_in->header.stamp.toSec();
   lastBelief.timeStamp = now;
 
@@ -171,8 +171,12 @@ Eigen::VectorXd QuadUkf::processFunc(const Eigen::VectorXd x, const double dt)
   currState.quaternion.normalize();
 
   // Rotate current and previous accelerations into inertial frame, then average them
-  currState.acceleration = (prevState.quaternion.toRotationMatrix()
-      * prevState.acceleration + lastBelief.state.acceleration) / 2.0;
+  currState.acceleration = prevState.quaternion.toRotationMatrix()
+      * prevState.acceleration;
+
+  // Sam's constant-jerk approximation:
+  //Eigen::Vector3d prevA = prevState.quaternion.toRotationMatrix() * prevState.acceleration;
+  //currState.acceleration =prevA + (prevA - lastBelief.state.acceleration)/(now-dt-lastBelief.timeStamp)*dt;
 
   // Compute current velocity by integrating current acceleration
   currState.velocity = prevState.velocity
