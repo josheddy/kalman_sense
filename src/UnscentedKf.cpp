@@ -85,16 +85,12 @@ UnscentedKf::Transform UnscentedKf::unscentedStateTransform(
 
   vec = sample.vector;
   sigmas = sample.sigmaPoints;
-  std::cout << "vec from state UT\n" << vec << std::endl;
-  //std::cout << "sigma pts from state UT\n" << sigmas << std::endl;
 
   Eigen::MatrixXd devs = Eigen::MatrixXd::Zero(n, L);
   devs = computeDeviations(sample);
-  //std::cout << "deviations from state UT\n" << devs << std::endl;
 
   Eigen::MatrixXd cov = Eigen::MatrixXd::Zero(n, n);
   cov = computeCovariance(devs, covWts, noiseCov);
-  //std::cout << "cov mat from state UT\n" << cov << std::endl;
 
   UnscentedKf::Transform out {vec, sigmas, cov, devs};
   return out;

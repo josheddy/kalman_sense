@@ -12,13 +12,11 @@ QuadUkf::QuadUkf(ros::Publisher pub)
   {
     meanWeights(i) = 1 / (2 * (numStates + lambda));
   }
-  meanWeights = meanWeights / meanWeights.sum();
-  std::cout << "mean wts sum:\t" << meanWeights.sum() << std::endl;
+  std::cout << "sum of mean weights:\t" << meanWeights.sum() << std::endl;
 
   // Set up covariance weights
   covarianceWeights = meanWeights;
-  covarianceWeights(0) += (1 - pow(alpha, 2) + beta);
-  covarianceWeights = covarianceWeights / covarianceWeights.sum();
+  covarianceWeights(0) += (1 - alpha * alpha + beta);
 
   // Define initial position, orientation, velocity, angular velocity, and acceleration
   Eigen::Quaterniond initQuat = Eigen::Quaterniond::Identity();
@@ -64,29 +62,34 @@ void QuadUkf::imuCallback(const sensor_msgs::ImuConstPtr &msg_in)
 
   // Compute time step "dt"
   double now = ros::Time::now().toSec();
-  lastBelief.dt = now - msg_in->header.stamp.toSec();
+  QuadBelief xB = lastBelief;
+  xB.dt = now - msg_in->header.stamp.toSec();
 
   // Extract inertial data from IMU message
-  lastBelief.state.angular_velocity(0) = msg_in->angular_velocity.x;
-  lastBelief.state.angular_velocity(1) = msg_in->angular_velocity.y;
-  lastBelief.state.angular_velocity(2) = msg_in->angular_velocity.z;
-  lastBelief.state.acceleration(0) = msg_in->linear_acceleration.x;
-  lastBelief.state.acceleration(1) = msg_in->linear_acceleration.y;
-  lastBelief.state.acceleration(2) = msg_in->linear_acceleration.z;
+
+  xB.state.angular_velocity(0) = msg_in->angular_velocity.x;
+  xB.state.angular_velocity(1) = msg_in->angular_velocity.y;
+  xB.state.angular_velocity(2) = msg_in->angular_velocity.z;
+  xB.state.acceleration(0) = msg_in->linear_acceleration.x;
+  xB.state.acceleration(1) = msg_in->linear_acceleration.y;
+  xB.state.acceleration(2) = msg_in->linear_acceleration.z;
+
+  xB.state.acceleration = xB.state.acceleration
+      - xB.state.quaternion.toRotationMatrix().inverse() * gravityAcc;
 
   std::cout << "IMU data read in" << std::endl;
-  std::cout << quadStateToEigen(lastBelief.state) << std::endl;
+  std::cout << quadStateToEigen(xB.state) << std::endl;
 
   // Predict next state and reset lastBelief
-  Eigen::VectorXd x = quadStateToEigen(lastBelief.state);
-  UnscentedKf::Belief b = predictState(x, lastBelief.covariance, Q_ProcNoiseCov,
-                                       lastBelief.dt);
-  QuadUkf::QuadBelief qb {now, lastBelief.dt, eigenToQuadState(b.state),
-                          b.covariance};
+  Eigen::VectorXd x = quadStateToEigen(xB.state);
+  UnscentedKf::Belief b = predictState(x, xB.covariance, Q_ProcNoiseCov, xB.dt);
+  QuadUkf::QuadBelief qb {now, xB.dt, eigenToQuadState(b.state), b.covariance};
+  qb.state.quaternion.normalize();
   lastBelief = qb;
 
   std::cout << "post-prediction:" << std::endl;
-  std::cout << quadStateToEigen(lastBelief.state) << std::endl;
+  std::cout << std::fixed << std::setprecision(9)
+      << quadStateToEigen(lastBelief.state) << std::endl;
 
   // Publish new pose message
   geometry_msgs::PoseWithCovarianceStamped msg_out;
@@ -158,6 +161,7 @@ geometry_msgs::PoseWithCovarianceStamped QuadUkf::quadBeliefToPoseWithCovStamped
 Eigen::VectorXd QuadUkf::processFunc(const Eigen::VectorXd x, const double dt)
 {
   QuadUkf::QuadState prevState = eigenToQuadState(x);
+  prevState.quaternion.normalize();
   QuadUkf::QuadState currState;
 
   // Compute current orientation via quaternion integration
@@ -167,13 +171,12 @@ Eigen::VectorXd QuadUkf::processFunc(const Eigen::VectorXd x, const double dt)
   currState.quaternion.normalize();
 
   // Rotate current and previous accelerations into inertial frame, then average them
-  currState.acceleration = ((currState.quaternion.toRotationMatrix()
-      * prevState.acceleration
-      + prevState.quaternion.toRotationMatrix() * lastBelief.state.acceleration)
-      / 2.0) - gravityAcc;
+  currState.acceleration = (prevState.quaternion.toRotationMatrix()
+      * prevState.acceleration + lastBelief.state.acceleration) / 2.0;
 
   // Compute current velocity by integrating current acceleration
-  currState.velocity = prevState.velocity + currState.acceleration * dt;
+  currState.velocity = prevState.velocity
+      + 0.5 * (lastBelief.state.acceleration + currState.acceleration) * dt;
 
   // Compute current position by integrating current velocity
   currState.position = prevState.position
