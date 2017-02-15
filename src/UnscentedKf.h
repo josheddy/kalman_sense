@@ -66,8 +66,9 @@ private:
                                     Eigen::VectorXd covWts,
                                     Eigen::MatrixXd noiseCov) const;
   Eigen::MatrixXd computeDeviations(UnscentedKf::SigmaPointSet sigmaPts) const;
-  Eigen::MatrixXd computeSigmaPoints(Eigen::VectorXd x, Eigen::MatrixXd P,
-                                     double scalingCoeff);
+  Eigen::MatrixXd computeSigmaPoints(const Eigen::VectorXd x,
+                                     const Eigen::MatrixXd P,
+                                     const double scalingCoeff) const;
   Eigen::MatrixXd fillMatrixWithVector(Eigen::VectorXd vec, int numCols) const;
 };
 

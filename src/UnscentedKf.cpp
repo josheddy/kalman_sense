@@ -112,17 +112,15 @@ UnscentedKf::Transform UnscentedKf::unscentedSensorTransform(
 
   vec = sample.vector;
   sigmas = sample.sigmaPoints;
-
   devs = computeDeviations(sample);
   cov = computeCovariance(devs, covWts, noiseCov);
-
   UnscentedKf::Transform out {vec, sigmas, cov, devs};
   return out;
 }
 
-Eigen::MatrixXd UnscentedKf::computeSigmaPoints(Eigen::VectorXd x,
-                                                Eigen::MatrixXd P,
-                                                double scalingCoeff)
+Eigen::MatrixXd UnscentedKf::computeSigmaPoints(const Eigen::VectorXd x,
+                                                const Eigen::MatrixXd P,
+                                                const double scalingCoeff) const
 {
   // Compute lower Cholesky factor "A" of the given covariance matrix P
   //Eigen::LDLT<Eigen::MatrixXd> ldltOfCovMat(P);
