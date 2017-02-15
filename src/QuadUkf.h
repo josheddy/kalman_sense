@@ -5,8 +5,11 @@
 #include "ros/ros.h"
 #include "geometry_msgs/PoseWithCovarianceStamped.h"
 #include "sensor_msgs/Imu.h"
+#include <std_msgs/Empty.h>
 #include <math.h>
 #include <iostream>
+#include <mutex>
+#include <chrono>
 
 class QuadUkf : public UnscentedKf
 {
@@ -30,10 +33,13 @@ public:
 
   double now;
 
+  std::timed_mutex mtx;
+
   const int numStates = 16; //TODO Do I still need this based on how numStates is set in UnscentedKf.cpp?
   Eigen::MatrixXd Q_ProcNoiseCov, R_SensorNoiseCov;
 
   QuadUkf(ros::Publisher pub);
+  QuadUkf(QuadUkf&& other);
   ~QuadUkf();
 
   void imuCallback(const sensor_msgs::ImuConstPtr &msg_in);

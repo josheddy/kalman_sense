@@ -3,6 +3,7 @@
 QuadUkf::QuadUkf(ros::Publisher pub)
 {
   publisher = pub;
+
   gravityAcc << 0.0, 0.0, -9.81;
 
   // Set up mean weights
@@ -47,6 +48,31 @@ QuadUkf::QuadUkf(ros::Publisher pub)
   H_SensorMap.block<6, 6>(7, 7) = Eigen::MatrixXd::Zero(6, 6);
 }
 
+QuadUkf::QuadUkf(QuadUkf&& other)
+{
+  std::lock_guard<std::timed_mutex> lock(other.mtx);
+
+  now = std::move(other.now);
+  other.now = 0;
+
+  Q_ProcNoiseCov = std::move(other.Q_ProcNoiseCov);
+  other.Q_ProcNoiseCov = Eigen::MatrixXd::Zero(1, 1);
+
+  R_SensorNoiseCov = std::move(other.R_SensorNoiseCov);
+  other.R_SensorNoiseCov = Eigen::MatrixXd::Zero(1, 1);
+
+  publisher = std::move(other.publisher);
+  ros::NodeHandle n;
+  ros::Publisher p = n.advertise<std_msgs::Empty>("empty", 1);
+  other.publisher = p;
+
+  gravityAcc = std::move(other.gravityAcc);
+  other.gravityAcc = Eigen::VectorXd::Zero(1);
+
+  H_SensorMap = std::move(other.H_SensorMap);
+  other.H_SensorMap = Eigen::MatrixXd::Zero(1, 1);
+}
+
 QuadUkf::~QuadUkf()
 {
 }
@@ -59,6 +85,8 @@ QuadUkf::~QuadUkf()
 void QuadUkf::imuCallback(const sensor_msgs::ImuConstPtr &msg_in)
 {
   std::cout << "imu cb started" << std::endl;
+
+  mtx.try_lock_for(std::chrono::milliseconds(100));
 
   QuadBelief xB = lastBelief;
   xB.state.angular_velocity(0) = msg_in->angular_velocity.x;
@@ -92,6 +120,9 @@ void QuadUkf::imuCallback(const sensor_msgs::ImuConstPtr &msg_in)
   geometry_msgs::PoseWithCovarianceStamped msg_out;
   msg_out = quadBeliefToPoseWithCovStamped(lastBelief);
   publisher.publish(msg_out);
+
+  mtx.unlock();
+
   std::cout << "imu cb finished" << std::endl;
 }
 
@@ -103,6 +134,9 @@ void QuadUkf::poseCallback(
     const geometry_msgs::PoseWithCovarianceStampedConstPtr &msg_in)
 {
   std::cout << "pose cb started" << std::endl;
+
+  mtx.try_lock_for(std::chrono::milliseconds(100));
+
   //now = ros::Time::now().toSec();
   // Extract pose information from pose sensor message
   Eigen::VectorXd z = Eigen::VectorXd::Zero(16);
@@ -133,6 +167,9 @@ void QuadUkf::poseCallback(
   geometry_msgs::PoseWithCovarianceStamped msg_out;
   msg_out = quadBeliefToPoseWithCovStamped(lastBelief);
   publisher.publish(msg_out);
+
+  mtx.unlock();
+
   std::cout << "pose cb finished" << std::endl;
 }
 
