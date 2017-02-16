@@ -139,7 +139,6 @@ message( STATUS "*******************************************8")
 ## Declare a C++ executable
 add_executable(node src/node.cpp
                     src/QuadUkf.cpp
-                    src/SimpleUkf.cpp
                     src/UnscentedKf.cpp
 )
 

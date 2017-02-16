@@ -6,6 +6,36 @@
 class UnscentedKf
 {
 public:
+  UnscentedKf();
+  virtual ~UnscentedKf() = 0;
+
+  struct Belief
+  {
+    Eigen::VectorXd state;
+    Eigen::MatrixXd covariance;
+  };
+
+  UnscentedKf::Belief predictState(Eigen::VectorXd x, Eigen::MatrixXd P,
+                                   Eigen::MatrixXd Q, double dt);
+  UnscentedKf::Belief correctState(Eigen::VectorXd x, Eigen::MatrixXd P,
+                                   Eigen::VectorXd z, Eigen::MatrixXd R);
+
+
+  void setWeights();
+  int numStates;
+  int numSensors;
+
+private:
+  Eigen::VectorXd meanWeights, covarianceWeights;
+
+  // Tunable parameters
+  const double alpha = 0.001;
+  const double kappa = 0;
+  const double beta = 2;
+  const double lambda = pow(alpha, 2) * (numStates + kappa) - numStates;
+  virtual Eigen::VectorXd processFunc(Eigen::VectorXd x, double dt) = 0;
+  virtual Eigen::VectorXd observationFunc(Eigen::VectorXd z) = 0;
+
   struct Transform
   {
     Eigen::VectorXd vector;
@@ -20,34 +50,6 @@ public:
     Eigen::MatrixXd sigmaPoints;
   };
 
-  struct Belief
-  {
-    Eigen::VectorXd state;
-    Eigen::MatrixXd covariance;
-  };
-
-  int numStates;
-  Eigen::VectorXd meanWeights, covarianceWeights;
-
-  // Tunable parameters
-  const double alpha = 0.001;
-  const double kappa = 0;
-  const double beta = 2;
-  const double lambda = pow(alpha, 2) * (numStates + kappa) - numStates;
-
-  UnscentedKf();
-  virtual ~UnscentedKf() = 0;
-
-  UnscentedKf::Belief predictState(Eigen::VectorXd x, Eigen::MatrixXd P,
-                                   Eigen::MatrixXd Q, double dt);
-  UnscentedKf::Belief correctState(Eigen::VectorXd x, Eigen::MatrixXd P,
-                                   Eigen::VectorXd z, Eigen::MatrixXd R);
-
-  virtual Eigen::VectorXd processFunc(Eigen::VectorXd x, double dt) = 0;
-  virtual Eigen::VectorXd observationFunc(Eigen::VectorXd z) = 0;
-
-private:
-
   Transform unscentedStateTransform(Eigen::MatrixXd sigmaPts,
                                     Eigen::VectorXd meanWts,
                                     Eigen::VectorXd covWts,
@@ -55,7 +57,7 @@ private:
   SigmaPointSet sampleStateSpace(Eigen::MatrixXd sigmaPts,
                                  Eigen::VectorXd meanWts, double dt);
 
-  Transform unscentedSensorTransform(int numSensors, Eigen::MatrixXd sigmaPts,
+  Transform unscentedSensorTransform(Eigen::MatrixXd sigmaPts,
                                      Eigen::VectorXd meanWts,
                                      Eigen::VectorXd covWts,
                                      Eigen::MatrixXd noiseCov);

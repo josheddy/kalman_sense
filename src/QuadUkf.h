@@ -6,7 +6,6 @@
 #include "geometry_msgs/PoseWithCovarianceStamped.h"
 #include "sensor_msgs/Imu.h"
 #include <std_msgs/Empty.h>
-#include <math.h>
 #include <iostream>
 #include <mutex>
 #include <chrono>
@@ -14,6 +13,18 @@
 class QuadUkf : public UnscentedKf
 {
 public:
+  QuadUkf(ros::Publisher pub);
+  QuadUkf(QuadUkf&& other);
+  ~QuadUkf();
+
+  void imuCallback(const sensor_msgs::ImuConstPtr &msg_in);
+  void poseCallback(
+      const geometry_msgs::PoseWithCovarianceStampedConstPtr &msg_in);
+
+  Eigen::VectorXd processFunc(const Eigen::VectorXd stateVec, const double dt);
+  Eigen::VectorXd observationFunc(const Eigen::VectorXd stateVec);
+
+private:
   struct QuadState
   {
     Eigen::Vector3d position;
@@ -35,23 +46,11 @@ public:
 
   std::timed_mutex mtx;
 
-  const int numStates = 16; //TODO Do I still need this based on how numStates is set in UnscentedKf.cpp?
+  //const int numStates = 16; //TODO Do I still need this based on how numStates is set in UnscentedKf.cpp?
   Eigen::MatrixXd Q_ProcNoiseCov, R_SensorNoiseCov;
 
-  QuadUkf(ros::Publisher pub);
-  QuadUkf(QuadUkf&& other);
-  ~QuadUkf();
-
-  void imuCallback(const sensor_msgs::ImuConstPtr &msg_in);
-  void poseCallback(
-      const geometry_msgs::PoseWithCovarianceStampedConstPtr &msg_in);
-
-  Eigen::VectorXd processFunc(const Eigen::VectorXd stateVec, const double dt);
-  Eigen::VectorXd observationFunc(const Eigen::VectorXd stateVec);
-
-private:
   ros::Publisher publisher;
-  Eigen::Vector3d gravityAcc; // Gravity vector in inertial frame
+  const Eigen::Vector3d gravityAcc{0, 0, -9.81}; // Gravity vector in inertial frame
   Eigen::MatrixXd H_SensorMap; // Observation model matrix H
 
   geometry_msgs::PoseWithCovarianceStamped quadBeliefToPoseWithCovStamped(

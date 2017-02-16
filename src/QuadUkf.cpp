@@ -4,19 +4,9 @@ QuadUkf::QuadUkf(ros::Publisher pub)
 {
   publisher = pub;
 
-  gravityAcc << 0.0, 0.0, -9.81;
-
-  // Set up mean weights
-  meanWeights = Eigen::VectorXd::Zero(2 * numStates + 1);
-  meanWeights(0) = lambda / (numStates + lambda);
-  for (int i = 1; i < meanWeights.rows(); i++)
-  {
-    meanWeights(i) = 1 / (2 * (numStates + lambda));
-  }
-
-  // Set up covariance weights
-  covarianceWeights = meanWeights;
-  covarianceWeights(0) += (1 - alpha * alpha + beta);
+  numStates = 16;
+  numSensors = 7;
+  this->UnscentedKf::setWeights();
 
   // Define initial position, orientation, velocity, angular velocity, and acceleration
   Eigen::Quaterniond initQuat = Eigen::Quaterniond::Identity();
@@ -40,12 +30,12 @@ QuadUkf::QuadUkf(ros::Publisher pub)
   // Initialize process noise covariance and sensor noise covariance
   Q_ProcNoiseCov = Eigen::MatrixXd::Identity(numStates, numStates);
   Q_ProcNoiseCov *= 0.01;  // default value
-  R_SensorNoiseCov = Eigen::MatrixXd::Identity(numStates, numStates);
+  R_SensorNoiseCov = Eigen::MatrixXd::Identity(numStates, numStates); //TODO add numMeasurements to UnscentedKf
   R_SensorNoiseCov *= 0.01;  // default value
 
   // Linear sensor map matrix H (z = H * x) //TODO create a more accurate sensor model?
-  H_SensorMap = Eigen::MatrixXd::Identity(numStates, numStates);
-  H_SensorMap.block<6, 6>(7, 7) = Eigen::MatrixXd::Zero(6, 6);
+  H_SensorMap = Eigen::MatrixXd::Zero(numStates, numSensors);
+  H_SensorMap.block(0, 0, numSensors, numSensors) = Eigen::MatrixXd::Identity(numSensors, numSensors);
 }
 
 QuadUkf::QuadUkf(QuadUkf&& other)
@@ -65,9 +55,6 @@ QuadUkf::QuadUkf(QuadUkf&& other)
   ros::NodeHandle n;
   ros::Publisher p = n.advertise<std_msgs::Empty>("empty", 1);
   other.publisher = p;
-
-  gravityAcc = std::move(other.gravityAcc);
-  other.gravityAcc = Eigen::VectorXd::Zero(1);
 
   H_SensorMap = std::move(other.H_SensorMap);
   other.H_SensorMap = Eigen::MatrixXd::Zero(1, 1);
@@ -139,7 +126,8 @@ void QuadUkf::poseCallback(
 
   //now = ros::Time::now().toSec();
   // Extract pose information from pose sensor message
-  Eigen::VectorXd z = Eigen::VectorXd::Zero(16);
+  Eigen::VectorXd z = Eigen::VectorXd::Zero(numStates);
+  std::cout << "Measurement vector before read-in:\n" << z << std::endl;
   z(0) = msg_in->pose.pose.position.x;
   z(1) = msg_in->pose.pose.position.y;
   z(2) = msg_in->pose.pose.position.z;
@@ -147,6 +135,8 @@ void QuadUkf::poseCallback(
   z(4) = msg_in->pose.pose.orientation.y;
   z(5) = msg_in->pose.pose.orientation.z;
   z(6) = msg_in->pose.pose.orientation.w;
+
+  std::cout << "Measurement vector:\n" << z << std::endl;
 
   // Correct belief and reset lastBelief
   Eigen::VectorXd x = quadStateToEigen(lastBelief.state);
@@ -156,6 +146,7 @@ void QuadUkf::poseCallback(
 
   //lastBelief.dt = now - msg_in->header.stamp.toSec();
   lastBelief.state = eigenToQuadState(currStateAndCov.state);
+  lastBelief.state.quaternion.normalize();
   lastBelief.covariance = currStateAndCov.covariance;
   lastBelief.timeStamp = msg_in->header.stamp.toSec();
 
@@ -187,13 +178,12 @@ geometry_msgs::PoseWithCovarianceStamped QuadUkf::quadBeliefToPoseWithCovStamped
   p.pose.pose.orientation.y = b.state.quaternion.y();
   p.pose.pose.orientation.z = b.state.quaternion.z();
 
-  //TODO Figure out covariance translation from QuadBelief to 6-by-6 PwCS representation
   // Copy covariance matrix from b into the covariance array in p
-//  int numCovElems = b.covariance.rows() * b.covariance.cols();
-//  for (int i = 0; i < numCovElems; ++i)
-//  {
-//    p.pose.covariance[i] = b.covariance(i);
-//  }
+  Eigen::MatrixXd relevant = b.covariance.block<6, 6>(0, 0);
+  for (int i = 0; i < relevant.rows() * relevant.cols(); ++i)
+  {
+    p.pose.covariance[i] = relevant(i);
+  }
 
   return p;
 }
@@ -232,9 +222,9 @@ Eigen::VectorXd QuadUkf::processFunc(const Eigen::VectorXd x, const double dt)
   return quadStateToEigen(currState);
 }
 
-Eigen::VectorXd QuadUkf::observationFunc(const Eigen::VectorXd stateVec)
+Eigen::VectorXd QuadUkf::observationFunc(const Eigen::VectorXd sensorVec)
 {
-  return H_SensorMap * stateVec; // Currently assumes a linear observation model
+  return H_SensorMap * sensorVec; // Currently assumes a linear observation model
 }
 
 /*
