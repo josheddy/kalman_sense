@@ -11,7 +11,7 @@ QuadUkf::QuadUkf(ros::Publisher pub)
   // Define initial position, orientation, velocity, angular velocity, and acceleration
   Eigen::Quaterniond initQuat = Eigen::Quaterniond::Identity();
   Eigen::Vector3d initPosition, initVelocity, initAngVel, initAcceleration;
-  initPosition = Eigen::Vector3d::Zero();
+  initPosition << 0, 0, 1;
   initVelocity = Eigen::Vector3d::Zero();
   initAngVel = Eigen::Vector3d::Zero();
   initAcceleration = Eigen::Vector3d::Zero();
@@ -35,7 +35,8 @@ QuadUkf::QuadUkf(ros::Publisher pub)
 
   // Linear sensor map matrix H (z = H * x) //TODO create a more accurate sensor model?
   H_SensorMap = Eigen::MatrixXd::Zero(numStates, numSensors);
-  H_SensorMap.block(0, 0, numSensors, numSensors) = Eigen::MatrixXd::Identity(numSensors, numSensors);
+  H_SensorMap.block(0, 0, numSensors, numSensors) = Eigen::MatrixXd::Identity(
+      numSensors, numSensors);
 }
 
 QuadUkf::QuadUkf(QuadUkf&& other)
@@ -99,9 +100,9 @@ void QuadUkf::imuCallback(const sensor_msgs::ImuConstPtr &msg_in)
   qb.state.quaternion.normalize();
   lastBelief = qb;
 
-  std::cout << "post-prediction:" << std::endl;
-  std::cout << std::fixed << std::setprecision(9)
-      << quadStateToEigen(lastBelief.state) << std::endl;
+//  std::cout << "post-prediction:" << std::endl;
+//  std::cout << std::fixed << std::setprecision(9)
+//      << quadStateToEigen(lastBelief.state) << std::endl;
 
   // Publish new pose message
   geometry_msgs::PoseWithCovarianceStamped msg_out;
@@ -127,16 +128,13 @@ void QuadUkf::poseCallback(
   //now = ros::Time::now().toSec();
   // Extract pose information from pose sensor message
   Eigen::VectorXd z = Eigen::VectorXd::Zero(numStates);
-  std::cout << "Measurement vector before read-in:\n" << z << std::endl;
   z(0) = msg_in->pose.pose.position.x;
   z(1) = msg_in->pose.pose.position.y;
   z(2) = msg_in->pose.pose.position.z;
-  z(3) = msg_in->pose.pose.orientation.x;
-  z(4) = msg_in->pose.pose.orientation.y;
-  z(5) = msg_in->pose.pose.orientation.z;
-  z(6) = msg_in->pose.pose.orientation.w;
-
-  std::cout << "Measurement vector:\n" << z << std::endl;
+  z(3) = msg_in->pose.pose.orientation.y; // PTAM's Quat Convention is backwards: (w, x, y, z)
+  z(4) = msg_in->pose.pose.orientation.z;
+  z(5) = msg_in->pose.pose.orientation.w;
+  z(6) = msg_in->pose.pose.orientation.x;
 
   // Correct belief and reset lastBelief
   Eigen::VectorXd x = quadStateToEigen(lastBelief.state);
@@ -150,9 +148,9 @@ void QuadUkf::poseCallback(
   lastBelief.covariance = currStateAndCov.covariance;
   lastBelief.timeStamp = msg_in->header.stamp.toSec();
 
-  std::cout << "post-correction:" << std::endl;
-  std::cout << std::fixed << std::setprecision(9)
-      << quadStateToEigen(lastBelief.state) << std::endl;
+//  std::cout << "post-correction:" << std::endl;
+//  std::cout << std::fixed << std::setprecision(9)
+//      << quadStateToEigen(lastBelief.state) << std::endl;
 
   // Publish new pose message
   geometry_msgs::PoseWithCovarianceStamped msg_out;
