@@ -30,10 +30,9 @@ QuadUkf::QuadUkf(ros::Publisher pub)
   // Initialize process noise covariance and sensor noise covariance
   Q_ProcNoiseCov = Eigen::MatrixXd::Identity(numStates, numStates);
   Q_ProcNoiseCov *= 0.01;  // default value
-  R_SensorNoiseCov = Eigen::MatrixXd::Identity(numStates, numStates); //TODO add numMeasurements to UnscentedKf
+  R_SensorNoiseCov = Eigen::MatrixXd::Identity(numStates, numStates);
   R_SensorNoiseCov *= 0.01;  // default value
 
-  // Linear sensor map matrix H (z = H * x) //TODO create a more accurate sensor model?
   H_SensorMap = Eigen::MatrixXd::Zero(numStates, numSensors);
   H_SensorMap.block(0, 0, numSensors, numSensors) = Eigen::MatrixXd::Identity(
       numSensors, numSensors);
@@ -86,7 +85,7 @@ void QuadUkf::imuCallback(const sensor_msgs::ImuConstPtr &msg_in)
 
   // Remove gravity
   xB.state.acceleration = xB.state.acceleration
-      - xB.state.quaternion.toRotationMatrix().inverse() * gravityAcc;
+      - xB.state.quaternion.toRotationMatrix().inverse() * GRAVITY_ACCEL;
 
   std::cout << "IMU data read in" << std::endl;
   std::cout << quadStateToEigen(xB.state) << std::endl;

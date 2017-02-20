@@ -50,7 +50,7 @@ private:
   Eigen::MatrixXd Q_ProcNoiseCov, R_SensorNoiseCov;
 
   ros::Publisher publisher;
-  const Eigen::Vector3d gravityAcc{0, 0, -9.81}; // Gravity vector in inertial frame
+  const Eigen::Vector3d GRAVITY_ACCEL{0, 0, -9.81}; // Gravity vector in inertial frame
   Eigen::MatrixXd H_SensorMap; // Observation model matrix H
 
   geometry_msgs::PoseWithCovarianceStamped quadBeliefToPoseWithCovStamped(

@@ -20,7 +20,6 @@ public:
   UnscentedKf::Belief correctState(Eigen::VectorXd x, Eigen::MatrixXd P,
                                    Eigen::VectorXd z, Eigen::MatrixXd R);
 
-
   void setWeights();
   int numStates;
   int numSensors;
@@ -29,10 +28,13 @@ private:
   Eigen::VectorXd meanWeights, covarianceWeights;
 
   // Tunable parameters
-  const double alpha = 0.001;
-  const double kappa = 0;
-  const double beta = 2;
-  const double lambda = pow(alpha, 2) * (numStates + kappa) - numStates;
+  const double ALPHA = 0.001;
+  const double BETA = 2;
+  const double KAPPA = 0;
+
+  const double LAMBDA = pow(ALPHA, 2) * (numStates + KAPPA) - numStates;
+  const double SIGMA_PT_SCALING_COEFF = pow(numStates + LAMBDA, 0.5);
+
   virtual Eigen::VectorXd processFunc(Eigen::VectorXd x, double dt) = 0;
   virtual Eigen::VectorXd observationFunc(Eigen::VectorXd z) = 0;
 
@@ -61,7 +63,7 @@ private:
                                      Eigen::VectorXd meanWts,
                                      Eigen::VectorXd covWts,
                                      Eigen::MatrixXd noiseCov);
-  SigmaPointSet sampleSensorSpace(int numSensors, Eigen::MatrixXd sigmaPts,
+  SigmaPointSet sampleSensorSpace(Eigen::MatrixXd sigmaPts,
                                   Eigen::VectorXd meanWts);
 
   Eigen::MatrixXd computeCovariance(Eigen::MatrixXd devs,
