@@ -150,7 +150,7 @@ Eigen::MatrixXd UnscentedKf::computeCovariance(Eigen::MatrixXd deviations,
                                                Eigen::VectorXd covWts,
                                                Eigen::MatrixXd noiseCov) const
 {
-  std::cout << "Deviations:\n" << deviations << std::endl;
+  //std::cout << "Deviations:\n" << deviations << std::endl;
   return deviations * covWts.asDiagonal() * deviations.transpose() + noiseCov;
 }
 

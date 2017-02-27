@@ -22,7 +22,7 @@ QuadUkf::QuadUkf(ros::Publisher pub)
   Eigen::MatrixXd initCov = Eigen::MatrixXd::Identity(numStates, numStates);
   initCov = initCov * 0.01;
   //double initTimeStamp = ros::Time::now().toSec();
-  now = ros::Time::now().toNSec();
+  now = ros::Time::now().toSec(); //TODO this used to be toNSec(). Why?
   double init_dt = 0.0001;
   QuadUkf::QuadBelief initBelief {now, init_dt, initState, initCov};
   lastBelief = initBelief;
@@ -76,12 +76,12 @@ void QuadUkf::imuCallback(const sensor_msgs::ImuConstPtr &msg_in)
   mtx.try_lock_for(std::chrono::milliseconds(100));
 
   QuadBelief xB = lastBelief;
-  xB.state.angular_velocity(0) = msg_in->angular_velocity.x;
-  xB.state.angular_velocity(1) = msg_in->angular_velocity.y;
-  xB.state.angular_velocity(2) = msg_in->angular_velocity.z;
-  xB.state.acceleration(0) = msg_in->linear_acceleration.x;
-  xB.state.acceleration(1) = msg_in->linear_acceleration.y;
-  xB.state.acceleration(2) = msg_in->linear_acceleration.z;
+  xB.state.angular_velocity(0) = -msg_in->angular_velocity.x;
+  xB.state.angular_velocity(1) = -msg_in->angular_velocity.y;
+  xB.state.angular_velocity(2) = -msg_in->angular_velocity.z;
+  xB.state.acceleration(0) = msg_in->linear_acceleration.x-ACCEL_BIAS(0);
+  xB.state.acceleration(1) = msg_in->linear_acceleration.y-ACCEL_BIAS(1);
+  xB.state.acceleration(2) = -msg_in->linear_acceleration.z-ACCEL_BIAS(2);
 
   // Remove gravity
   xB.state.acceleration = xB.state.acceleration
@@ -98,10 +98,6 @@ void QuadUkf::imuCallback(const sensor_msgs::ImuConstPtr &msg_in)
   QuadUkf::QuadBelief qb {now, xB.dt, eigenToQuadState(b.state), b.covariance};
   qb.state.quaternion.normalize();
   lastBelief = qb;
-
-//  std::cout << "post-prediction:" << std::endl;
-//  std::cout << std::fixed << std::setprecision(9)
-//      << quadStateToEigen(lastBelief.state) << std::endl;
 
   // Publish new pose message
   geometry_msgs::PoseWithCovarianceStamped msg_out;
@@ -129,10 +125,10 @@ void QuadUkf::poseCallback(
   Eigen::VectorXd z = Eigen::VectorXd::Zero(numStates);
   z(0) = msg_in->pose.pose.position.x;
   z(1) = msg_in->pose.pose.position.y;
-  z(2) = msg_in->pose.pose.position.z;
-  z(3) = msg_in->pose.pose.orientation.y; // PTAM's Quat Convention is backwards: (w, x, y, z)
-  z(4) = msg_in->pose.pose.orientation.z;
-  z(5) = msg_in->pose.pose.orientation.w;
+  z(2) = -msg_in->pose.pose.position.z;
+  z(3) = -msg_in->pose.pose.orientation.w; // PTAM's Quat Convention is backwards: (w, x, y, z)
+  z(4) = -msg_in->pose.pose.orientation.z;
+  z(5) = msg_in->pose.pose.orientation.y;
   z(6) = msg_in->pose.pose.orientation.x;
 
   // Correct belief and reset lastBelief
@@ -146,10 +142,6 @@ void QuadUkf::poseCallback(
   lastBelief.state.quaternion.normalize();
   lastBelief.covariance = currStateAndCov.covariance;
   lastBelief.timeStamp = msg_in->header.stamp.toSec();
-
-//  std::cout << "post-correction:" << std::endl;
-//  std::cout << std::fixed << std::setprecision(9)
-//      << quadStateToEigen(lastBelief.state) << std::endl;
 
   // Publish new pose message
   geometry_msgs::PoseWithCovarianceStamped msg_out;

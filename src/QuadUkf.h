@@ -42,6 +42,12 @@ private:
     Eigen::MatrixXd covariance;
   } lastBelief;
 
+  const Eigen::Vector3d GRAVITY_ACCEL{0, 0, 9.81}; // Gravity vector in inertial frame
+
+  const Eigen::Vector3d CALIBRATE_BIAS{0.065037, -0.0440454, 9.84935}; // Acceleration bias fro calibrate imu
+
+  const Eigen::Vector3d ACCEL_BIAS = CALIBRATE_BIAS - GRAVITY_ACCEL;
+
   double now;
 
   std::timed_mutex mtx;
@@ -50,7 +56,6 @@ private:
   Eigen::MatrixXd Q_ProcNoiseCov, R_SensorNoiseCov;
 
   ros::Publisher publisher;
-  const Eigen::Vector3d GRAVITY_ACCEL{0, 0, -9.81}; // Gravity vector in inertial frame
   Eigen::MatrixXd H_SensorMap; // Observation model matrix H
 
   geometry_msgs::PoseWithCovarianceStamped quadBeliefToPoseWithCovStamped(
