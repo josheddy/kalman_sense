@@ -11,7 +11,7 @@ QuadUkf::QuadUkf(ros::Publisher pub)
   // Define initial position, orientation, velocity, angular velocity, and acceleration
   Eigen::Quaterniond initQuat = Eigen::Quaterniond::Identity();
   Eigen::Vector3d initPosition, initVelocity, initAngVel, initAcceleration;
-  initPosition << 0, 0, 1;
+  initPosition << 0, 0, -1; // "one meter above the ground"
   initVelocity = Eigen::Vector3d::Zero();
   initAngVel = Eigen::Vector3d::Zero();
   initAcceleration = Eigen::Vector3d::Zero();
@@ -33,9 +33,10 @@ QuadUkf::QuadUkf(ros::Publisher pub)
   R_SensorNoiseCov = Eigen::MatrixXd::Identity(numStates, numStates);
   R_SensorNoiseCov *= 0.01;  // default value
 
-  H_SensorMap = Eigen::MatrixXd::Zero(numStates, numSensors);
-  H_SensorMap.block(0, 0, numSensors, numSensors) = Eigen::MatrixXd::Identity(
-      numSensors, numSensors);
+//  H_SensorMap = Eigen::MatrixXd::Zero(numStates, numSensors);
+//  H_SensorMap.block(0, 0, numSensors, numSensors) = Eigen::MatrixXd::Identity(
+//      numSensors, numSensors);
+  H_SensorMap = Eigen::MatrixXd::Identity(numStates, numStates);
 }
 
 QuadUkf::QuadUkf(QuadUkf&& other)
@@ -79,9 +80,9 @@ void QuadUkf::imuCallback(const sensor_msgs::ImuConstPtr &msg_in)
   xB.state.angular_velocity(0) = -msg_in->angular_velocity.x;
   xB.state.angular_velocity(1) = -msg_in->angular_velocity.y;
   xB.state.angular_velocity(2) = -msg_in->angular_velocity.z;
-  xB.state.acceleration(0) = msg_in->linear_acceleration.x-ACCEL_BIAS(0);
-  xB.state.acceleration(1) = msg_in->linear_acceleration.y-ACCEL_BIAS(1);
-  xB.state.acceleration(2) = -msg_in->linear_acceleration.z-ACCEL_BIAS(2);
+  xB.state.acceleration(0) = msg_in->linear_acceleration.x;
+  xB.state.acceleration(1) = msg_in->linear_acceleration.y;
+  xB.state.acceleration(2) = -msg_in->linear_acceleration.z; // Positive z is down
 
   // Remove gravity
   xB.state.acceleration = xB.state.acceleration
@@ -92,10 +93,11 @@ void QuadUkf::imuCallback(const sensor_msgs::ImuConstPtr &msg_in)
 
   // Predict next state and reset lastBelief
   Eigen::VectorXd x = quadStateToEigen(xB.state);
-  now = ros::Time::now().toSec();
-  xB.dt = now - msg_in->header.stamp.toSec();
+  xB.dt = msg_in->header.stamp.toSec() - lastBelief.timeStamp;
   UnscentedKf::Belief b = predictState(x, xB.covariance, Q_ProcNoiseCov, xB.dt);
-  QuadUkf::QuadBelief qb {now, xB.dt, eigenToQuadState(b.state), b.covariance};
+  QuadUkf::QuadBelief qb {msg_in->header.stamp.toSec(), xB.dt, eigenToQuadState(
+      b.state),
+                          b.covariance};
   qb.state.quaternion.normalize();
   lastBelief = qb;
 
@@ -120,24 +122,27 @@ void QuadUkf::poseCallback(
 
   mtx.try_lock_for(std::chrono::milliseconds(100));
 
-  //now = ros::Time::now().toSec();
-  // Extract pose information from pose sensor message
-  Eigen::VectorXd z = Eigen::VectorXd::Zero(numStates);
-  z(0) = msg_in->pose.pose.position.x;
-  z(1) = msg_in->pose.pose.position.y;
-  z(2) = -msg_in->pose.pose.position.z;
-  z(3) = -msg_in->pose.pose.orientation.w; // PTAM's Quat Convention is backwards: (w, x, y, z)
-  z(4) = -msg_in->pose.pose.orientation.z;
-  z(5) = msg_in->pose.pose.orientation.y;
-  z(6) = msg_in->pose.pose.orientation.x;
-
   // Correct belief and reset lastBelief
-  Eigen::VectorXd x = quadStateToEigen(lastBelief.state);
+  //Eigen::VectorXd x = quadStateToEigen(lastBelief.state);
+  QuadBelief xB = lastBelief;
   Eigen::MatrixXd P = lastBelief.covariance;
 
-  UnscentedKf::Belief currStateAndCov = correctState(x, P, z, R_SensorNoiseCov);
+  // Extract pose information from pose sensor message
+  // Eigen::VectorXd z = Eigen::VectorXd::Zero(numStates);
+  xB.state.position(0) = msg_in->pose.pose.position.x;
+  xB.state.position(1) = msg_in->pose.pose.position.y;
+  xB.state.position(2) = -msg_in->pose.pose.position.z; // Positive z is down
+  xB.state.quaternion.x() = -msg_in->pose.pose.orientation.w; // PTAM's Quat Convention is backwards: (w, z, y, x)
+  xB.state.quaternion.y() = -msg_in->pose.pose.orientation.z; // PTAM's Quats are NEGATED (in an RHS)
+  xB.state.quaternion.z() = -msg_in->pose.pose.orientation.y;
+  xB.state.quaternion.w() = msg_in->pose.pose.orientation.x;
 
-  //lastBelief.dt = now - msg_in->header.stamp.toSec();
+  Eigen::VectorXd x = quadStateToEigen(xB.state);
+  xB.dt = msg_in->header.stamp.toSec() - lastBelief.timeStamp;
+  UnscentedKf::Belief currStateAndCov = correctState(x, P, R_SensorNoiseCov,
+                                                     xB.dt);
+
+  lastBelief.dt = xB.dt;
   lastBelief.state = eigenToQuadState(currStateAndCov.state);
   lastBelief.state.quaternion.normalize();
   lastBelief.covariance = currStateAndCov.covariance;
@@ -193,10 +198,6 @@ Eigen::VectorXd QuadUkf::processFunc(const Eigen::VectorXd x, const double dt)
   currState.acceleration = prevState.quaternion.toRotationMatrix()
       * prevState.acceleration;
 
-  // Sam's constant-jerk approximation:
-  //Eigen::Vector3d prevA = prevState.quaternion.toRotationMatrix() * prevState.acceleration;
-  //currState.acceleration =prevA + (prevA - lastBelief.state.acceleration)/(now-dt-lastBelief.timeStamp)*dt;
-
   // Compute current velocity by integrating current acceleration
   currState.velocity = prevState.velocity
       + 0.5 * (lastBelief.state.acceleration + currState.acceleration) * dt;
@@ -211,9 +212,16 @@ Eigen::VectorXd QuadUkf::processFunc(const Eigen::VectorXd x, const double dt)
   return quadStateToEigen(currState);
 }
 
-Eigen::VectorXd QuadUkf::observationFunc(const Eigen::VectorXd sensorVec)
+Eigen::VectorXd QuadUkf::observationFunc(const Eigen::VectorXd sensorVec,
+                                         const double dt)
 {
-  return H_SensorMap * sensorVec; // Currently assumes a linear observation model
+  Eigen::Vector3d currPos{sensorVec(0), sensorVec(1), sensorVec(2)};
+  Eigen::Vector3d currVel = (currPos - lastBelief.state.position) / dt;
+
+  Eigen::VectorXd currState = sensorVec;
+  currState.block<3, 1>(7, 0) = currVel;
+
+  return currState; // TODO Is this correct per Sam's instructions?
 }
 
 /*

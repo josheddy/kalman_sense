@@ -22,7 +22,7 @@ public:
       const geometry_msgs::PoseWithCovarianceStampedConstPtr &msg_in);
 
   Eigen::VectorXd processFunc(const Eigen::VectorXd stateVec, const double dt);
-  Eigen::VectorXd observationFunc(const Eigen::VectorXd stateVec);
+  Eigen::VectorXd observationFunc(const Eigen::VectorXd stateVec, const double dt);
 
 private:
   struct QuadState
@@ -43,10 +43,6 @@ private:
   } lastBelief;
 
   const Eigen::Vector3d GRAVITY_ACCEL{0, 0, 9.81}; // Gravity vector in inertial frame
-
-  const Eigen::Vector3d CALIBRATE_BIAS{0.065037, -0.0440454, 9.84935}; // Acceleration bias fro calibrate imu
-
-  const Eigen::Vector3d ACCEL_BIAS = CALIBRATE_BIAS - GRAVITY_ACCEL;
 
   double now;
 

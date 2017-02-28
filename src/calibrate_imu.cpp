@@ -6,8 +6,6 @@ double accBiasX = 0;
 double accBiasY = 0;
 double accBiasZ = 0;
 
-//const double GRAVITY_ACCEL = -9.81;
-
 int count = 0;
 
 void collectBias(const sensor_msgs::ImuConstPtr &msg)
@@ -20,11 +18,11 @@ void collectBias(const sensor_msgs::ImuConstPtr &msg)
 
 int main(int argc, char **argv)
 {
-  ros::init(argc, argv, "kalman_sense");
+  ros::init(argc, argv, "imu_calib");
   ros::NodeHandle nh;
   ros::Subscriber imu_sub = nh.subscribe("/imu/data_raw", 1, &collectBias);
 
-  while (ros::ok() and count < 10000)
+  while (ros::ok() and count < 1000)
   {
     ros::spinOnce();
     std::cout << count << std::endl;
@@ -35,6 +33,6 @@ int main(int argc, char **argv)
   accBiasZ = accBiasZ / count;
 
   std::cout << "X, Y, and Z accelerometer biases:" << std::endl;
-  std::cout << accBiasX << ", " << accBiasY << ", " << accBiasZ << std::endl;
+  std::cout << accBiasX << "\n" << accBiasY << "\n" << accBiasZ << std::endl;
   return 0;
 }

@@ -5,17 +5,20 @@
 #include <iostream>
 #include <complex>
 
+// algorithm from Crassidis paper
+
 int count = 0;
-const int N = 100;
+const int N = 250;
 const double weight = 1.0 / N;
 Eigen::MatrixXd Q = Eigen::MatrixXd::Zero(4, N);
 
 void poseCallback(const geometry_msgs::PoseWithCovarianceStampedConstPtr &msg)
 {
-  Q(0, count) = msg->pose.pose.orientation.w;
-  Q(1, count) = msg->pose.pose.orientation.z;
-  Q(2, count) = msg->pose.pose.orientation.y;
-  Q(3, count) = msg->pose.pose.orientation.x;
+  // PTAM's convention: (w, z, y, x)
+  Q(0, count) = msg->pose.pose.orientation.x;
+  Q(1, count) = msg->pose.pose.orientation.w;
+  Q(2, count) = msg->pose.pose.orientation.z;
+  Q(3, count) = msg->pose.pose.orientation.y;
 
   ++count;
 }

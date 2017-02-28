@@ -18,7 +18,7 @@ public:
   UnscentedKf::Belief predictState(Eigen::VectorXd x, Eigen::MatrixXd P,
                                    Eigen::MatrixXd Q, double dt);
   UnscentedKf::Belief correctState(Eigen::VectorXd x, Eigen::MatrixXd P,
-                                   Eigen::VectorXd z, Eigen::MatrixXd R);
+                                   Eigen::MatrixXd R, double dt);
 
   void setWeights();
   int numStates;
@@ -36,7 +36,7 @@ private:
   const double SIGMA_PT_SCALING_COEFF = pow(numStates + LAMBDA, 0.5);
 
   virtual Eigen::VectorXd processFunc(Eigen::VectorXd x, double dt) = 0;
-  virtual Eigen::VectorXd observationFunc(Eigen::VectorXd z) = 0;
+  virtual Eigen::VectorXd observationFunc(Eigen::VectorXd z, double dt) = 0;
 
   struct Transform
   {
@@ -62,9 +62,9 @@ private:
   Transform unscentedSensorTransform(Eigen::MatrixXd sigmaPts,
                                      Eigen::VectorXd meanWts,
                                      Eigen::VectorXd covWts,
-                                     Eigen::MatrixXd noiseCov);
+                                     Eigen::MatrixXd noiseCov, double dt);
   SigmaPointSet sampleSensorSpace(Eigen::MatrixXd sigmaPts,
-                                  Eigen::VectorXd meanWts);
+                                  Eigen::VectorXd meanWts, double dt);
 
   Eigen::MatrixXd computeCovariance(Eigen::MatrixXd devs,
                                     Eigen::VectorXd covWts,
