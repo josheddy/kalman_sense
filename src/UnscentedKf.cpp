@@ -31,7 +31,8 @@ UnscentedKf::Belief UnscentedKf::predictState(Eigen::VectorXd x,
 
 UnscentedKf::Belief UnscentedKf::correctState(Eigen::VectorXd x,
                                               Eigen::MatrixXd P,
-                                              Eigen::MatrixXd R, double dt)
+                                              Eigen::VectorXd z,
+                                              Eigen::MatrixXd R)
 {
   Eigen::MatrixXd sigmaPts(numStates, 2 * numStates + 1);
   sigmaPts = computeSigmaPoints(x, P, SIGMA_PT_SCALING_COEFF);
@@ -39,35 +40,40 @@ UnscentedKf::Belief UnscentedKf::correctState(Eigen::VectorXd x,
   UnscentedKf::Transform sensorTf = unscentedSensorTransform(sigmaPts,
                                                              meanWeights,
                                                              covarianceWeights,
-                                                             R, dt);
-  Eigen::VectorXd xPred = sensorTf.vector;  // Expected sensor vector
-  std::cout << "zPred:\n" << xPred << std::endl;
+                                                             R);
+  std::cout << "did unscentedSensorTransform" << std::endl;
+
+  Eigen::VectorXd zPred = sensorTf.vector;  // Expected sensor vector
   Eigen::MatrixXd P_zz = sensorTf.covariance;  // Sensor/sensor covariance
-  std::cout << "P_zz\n" << P_zz << std::endl;
+  std::cout << "zPred\n" << zPred << std::endl;
 
   // Compute state/sensor cross-covariance
   UnscentedKf::SigmaPointSet predPointSet {x, sigmaPts};
   Eigen::MatrixXd predDeviations = computeDeviations(predPointSet);
-  std::cout << "predDeviations\n" << predDeviations << std::endl;
-  std::cout << "deviations\n" << sensorTf.deviations << std::endl;
+  //std::cout << "predDeviations:\n" << predDeviations << std::endl;
+  //std::cout << "deviations\n" << sensorTf.deviations << std::endl;
 
-  Eigen::MatrixXd P_xz = Eigen::MatrixXd::Zero(numStates, numStates);
+  Eigen::MatrixXd P_xz = Eigen::MatrixXd::Zero(numStates, numSensors);
   P_xz = predDeviations * covarianceWeights.asDiagonal()
       * sensorTf.deviations.transpose();
-  std::cout << "P_xz\n" << P_xz << std::endl;
+  std::cout << "did P_xz" << std::endl;
 
   // Compute Kalman gain
-  Eigen::MatrixXd K = Eigen::MatrixXd::Zero(numStates, numStates);
+  Eigen::MatrixXd K = Eigen::MatrixXd::Zero(numStates, numSensors);
   K = P_xz * P_zz.inverse();
-  std::cout << "K\n" << K << std::endl;
+  std::cout << "did K\n" << K << std::endl;
+
 
   // Update state vector
   Eigen::VectorXd xCorr = Eigen::VectorXd::Zero(numStates);
-  xCorr = x + K * (x - xPred);
+  xCorr = x + K * (z - zPred);
+  std::cout << "did xCorr" << std::endl;
 
   // Update state covariance
   Eigen::MatrixXd PCorr = Eigen::MatrixXd::Zero(numStates, numStates);
   PCorr = P - K * P_xz.transpose();
+  std::cout << "did PCorr" << std::endl;
+
   //PCorr = PPred - K * P_zz * K.transpose()?
 
   UnscentedKf::Belief bel {xCorr, PCorr};
@@ -97,15 +103,15 @@ UnscentedKf::Transform UnscentedKf::unscentedStateTransform(
 
 UnscentedKf::Transform UnscentedKf::unscentedSensorTransform(
     Eigen::MatrixXd sigmaPts, Eigen::VectorXd meanWts, Eigen::VectorXd covWts,
-    Eigen::MatrixXd noiseCov, double dt)
+    Eigen::MatrixXd noiseCov)
 {
   int L = sigmaPts.cols();
-  Eigen::VectorXd vec = Eigen::VectorXd::Zero(numStates);
-  Eigen::MatrixXd sigmas = Eigen::MatrixXd::Zero(numStates, L);
-  Eigen::MatrixXd cov = Eigen::MatrixXd::Zero(numStates, numStates);
-  Eigen::MatrixXd devs = Eigen::MatrixXd::Zero(numStates, L);
+  Eigen::VectorXd vec = Eigen::VectorXd::Zero(numSensors);
+  Eigen::MatrixXd sigmas = Eigen::MatrixXd::Zero(numSensors, L);
+  Eigen::MatrixXd cov = Eigen::MatrixXd::Zero(numSensors, numSensors);
+  Eigen::MatrixXd devs = Eigen::MatrixXd::Zero(numSensors, L);
 
-  UnscentedKf::SigmaPointSet sample = sampleSensorSpace(sigmaPts, meanWts, dt);
+  UnscentedKf::SigmaPointSet sample = sampleSensorSpace(sigmaPts, meanWts);
   vec = sample.vector;
   sigmas = sample.sigmaPoints;
   devs = computeDeviations(sample);
@@ -154,7 +160,6 @@ Eigen::MatrixXd UnscentedKf::computeCovariance(Eigen::MatrixXd deviations,
                                                Eigen::VectorXd covWts,
                                                Eigen::MatrixXd noiseCov) const
 {
-  //std::cout << "Deviations:\n" << deviations << std::endl;
   return deviations * covWts.asDiagonal() * deviations.transpose() + noiseCov;
 }
 
@@ -177,15 +182,15 @@ UnscentedKf::SigmaPointSet UnscentedKf::sampleStateSpace(
 }
 
 UnscentedKf::SigmaPointSet UnscentedKf::sampleSensorSpace(
-    Eigen::MatrixXd sigmaPts, Eigen::VectorXd meanWts, double dt)
+    Eigen::MatrixXd sigmaPts, Eigen::VectorXd meanWts)
 {
   int L = sigmaPts.cols();
 
-  Eigen::VectorXd vec = Eigen::VectorXd::Zero(numStates);
-  Eigen::MatrixXd sigmas = Eigen::MatrixXd::Zero(numStates, L);
+  Eigen::VectorXd vec = Eigen::VectorXd::Zero(numSensors);
+  Eigen::MatrixXd sigmas = Eigen::MatrixXd::Zero(numSensors, L);
   for (int i = 0; i < L; i++)
   {
-    sigmas.col(i) = observationFunc(sigmaPts.col(i), dt);
+    sigmas.col(i) = observationFunc(sigmaPts.col(i));
     vec = vec + meanWts(i) * sigmas.col(i);
   }
 

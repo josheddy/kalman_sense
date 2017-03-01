@@ -22,7 +22,9 @@ public:
       const geometry_msgs::PoseWithCovarianceStampedConstPtr &msg_in);
 
   Eigen::VectorXd processFunc(const Eigen::VectorXd stateVec, const double dt);
-  Eigen::VectorXd observationFunc(const Eigen::VectorXd stateVec, const double dt);
+  Eigen::VectorXd observationFunc(const Eigen::VectorXd stateVec);
+
+  geometry_msgs::PoseWithCovarianceStamped lastPoseMsg;
 
 private:
   struct QuadState
@@ -42,7 +44,7 @@ private:
     Eigen::MatrixXd covariance;
   } lastBelief;
 
-  const Eigen::Vector3d GRAVITY_ACCEL{0, 0, 9.81}; // Gravity vector in inertial frame
+  const Eigen::Vector3d GRAVITY_ACCEL {0, 0, 9.81}; // Gravity vector in inertial frame
 
   double now;
 

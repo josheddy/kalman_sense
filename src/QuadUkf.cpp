@@ -5,7 +5,7 @@ QuadUkf::QuadUkf(ros::Publisher pub)
   publisher = pub;
 
   numStates = 16;
-  numSensors = 7;
+  numSensors = 10;
   this->UnscentedKf::setWeights();
 
   // Define initial position, orientation, velocity, angular velocity, and acceleration
@@ -30,13 +30,17 @@ QuadUkf::QuadUkf(ros::Publisher pub)
   // Initialize process noise covariance and sensor noise covariance
   Q_ProcNoiseCov = Eigen::MatrixXd::Identity(numStates, numStates);
   Q_ProcNoiseCov *= 0.01;  // default value
-  R_SensorNoiseCov = Eigen::MatrixXd::Identity(numStates, numStates);
+  R_SensorNoiseCov = Eigen::MatrixXd::Identity(numSensors, numSensors);
   R_SensorNoiseCov *= 0.01;  // default value
 
-//  H_SensorMap = Eigen::MatrixXd::Zero(numStates, numSensors);
-//  H_SensorMap.block(0, 0, numSensors, numSensors) = Eigen::MatrixXd::Identity(
-//      numSensors, numSensors);
-  H_SensorMap = Eigen::MatrixXd::Identity(numStates, numStates);
+  H_SensorMap = Eigen::MatrixXd::Zero(numStates, numSensors);
+  H_SensorMap.block(0, 0, numSensors, numSensors) = Eigen::MatrixXd::Identity(
+      numSensors, numSensors);
+
+  lastPoseMsg.header.stamp.sec = ros::Time::now().toSec();
+  lastPoseMsg.pose.pose.position.x = initPosition(0);
+  lastPoseMsg.pose.pose.position.y = initPosition(1);
+  lastPoseMsg.pose.pose.position.z = initPosition(2);
 }
 
 QuadUkf::QuadUkf(QuadUkf&& other)
@@ -88,9 +92,6 @@ void QuadUkf::imuCallback(const sensor_msgs::ImuConstPtr &msg_in)
   xB.state.acceleration = xB.state.acceleration
       - xB.state.quaternion.toRotationMatrix().inverse() * GRAVITY_ACCEL;
 
-  std::cout << "IMU data read in" << std::endl;
-  std::cout << quadStateToEigen(xB.state) << std::endl;
-
   // Predict next state and reset lastBelief
   Eigen::VectorXd x = quadStateToEigen(xB.state);
   xB.dt = msg_in->header.stamp.toSec() - lastBelief.timeStamp;
@@ -108,6 +109,7 @@ void QuadUkf::imuCallback(const sensor_msgs::ImuConstPtr &msg_in)
 
   mtx.unlock();
 
+  std::cout << "velocity:\n" << lastBelief.state.velocity << std::endl;
   std::cout << "imu cb finished" << std::endl;
 }
 
@@ -122,27 +124,41 @@ void QuadUkf::poseCallback(
 
   mtx.try_lock_for(std::chrono::milliseconds(100));
 
-  // Correct belief and reset lastBelief
-  //Eigen::VectorXd x = quadStateToEigen(lastBelief.state);
-  QuadBelief xB = lastBelief;
+  Eigen::VectorXd z(numSensors);
+  z(0) = msg_in->pose.pose.position.x;
+  z(1) = msg_in->pose.pose.position.y;
+  z(2) = -msg_in->pose.pose.position.z;
+  z(3) = -msg_in->pose.pose.orientation.w;
+  z(4) = -msg_in->pose.pose.orientation.z;
+  z(5) = -msg_in->pose.pose.orientation.y;
+  z(6) = msg_in->pose.pose.orientation.x;
+  double dtPose = msg_in->header.stamp.toSec()
+      - lastPoseMsg.header.stamp.sec;
+  z(7) = (z(0) - lastPoseMsg.pose.pose.position.x) / dtPose;
+  z(8) = (z(1) - lastPoseMsg.pose.pose.position.y) / dtPose;
+  z(9) = (z(2) - lastPoseMsg.pose.pose.position.z) / dtPose;
+
+  double dt = msg_in->header.stamp.toSec() - lastBelief.timeStamp;
+
+  // Predict state at time of pose message
+  QuadUkf::QuadBelief xB = lastBelief;
+  xB.state.velocity = lastBelief.state.velocity
+      + lastBelief.state.acceleration * dt;
+  xB.state.position = (xB.state.velocity + lastBelief.state.velocity) / 2.0 * dt
+      + lastBelief.state.position;
+  Eigen::MatrixXd Omega = generateBigOmegaMat(
+      lastBelief.state.angular_velocity);
+  xB.state.quaternion.coeffs() = lastBelief.state.quaternion.coeffs()
+      + 0.5 * Omega * lastBelief.state.quaternion.coeffs() * dt;
+  xB.state.quaternion.normalize();
+  Eigen::VectorXd xPred = quadStateToEigen(xB.state);
+
   Eigen::MatrixXd P = lastBelief.covariance;
 
-  // Extract pose information from pose sensor message
-  // Eigen::VectorXd z = Eigen::VectorXd::Zero(numStates);
-  xB.state.position(0) = msg_in->pose.pose.position.x;
-  xB.state.position(1) = msg_in->pose.pose.position.y;
-  xB.state.position(2) = -msg_in->pose.pose.position.z; // Positive z is down
-  xB.state.quaternion.x() = -msg_in->pose.pose.orientation.w; // PTAM's Quat Convention is backwards: (w, z, y, x)
-  xB.state.quaternion.y() = -msg_in->pose.pose.orientation.z; // PTAM's Quats are NEGATED (in an RHS)
-  xB.state.quaternion.z() = -msg_in->pose.pose.orientation.y;
-  xB.state.quaternion.w() = msg_in->pose.pose.orientation.x;
+  UnscentedKf::Belief currStateAndCov = correctState(xPred, P, z,
+                                                     R_SensorNoiseCov);
 
-  Eigen::VectorXd x = quadStateToEigen(xB.state);
-  xB.dt = msg_in->header.stamp.toSec() - lastBelief.timeStamp;
-  UnscentedKf::Belief currStateAndCov = correctState(x, P, R_SensorNoiseCov,
-                                                     xB.dt);
-
-  lastBelief.dt = xB.dt;
+  lastBelief.dt = dt;
   lastBelief.state = eigenToQuadState(currStateAndCov.state);
   lastBelief.state.quaternion.normalize();
   lastBelief.covariance = currStateAndCov.covariance;
@@ -153,8 +169,14 @@ void QuadUkf::poseCallback(
   msg_out = quadBeliefToPoseWithCovStamped(lastBelief);
   publisher.publish(msg_out);
 
+  lastPoseMsg.header.stamp.sec = msg_in->header.stamp.toSec();
+  lastPoseMsg.pose.pose.position.x = msg_in->pose.pose.position.x;
+  lastPoseMsg.pose.pose.position.y = msg_in->pose.pose.position.y;
+  lastPoseMsg.pose.pose.position.z = -msg_in->pose.pose.position.z;
+
   mtx.unlock();
 
+  std::cout << "velocity:\n" << lastBelief.state.velocity << std::endl;
   std::cout << "pose cb finished" << std::endl;
 }
 
@@ -212,16 +234,10 @@ Eigen::VectorXd QuadUkf::processFunc(const Eigen::VectorXd x, const double dt)
   return quadStateToEigen(currState);
 }
 
-Eigen::VectorXd QuadUkf::observationFunc(const Eigen::VectorXd sensorVec,
-                                         const double dt)
+Eigen::VectorXd QuadUkf::observationFunc(const Eigen::VectorXd stateVec)
 {
-  Eigen::Vector3d currPos{sensorVec(0), sensorVec(1), sensorVec(2)};
-  Eigen::Vector3d currVel = (currPos - lastBelief.state.position) / dt;
 
-  Eigen::VectorXd currState = sensorVec;
-  currState.block<3, 1>(7, 0) = currVel;
-
-  return currState; // TODO Is this correct per Sam's instructions?
+  return stateVec.head(numSensors);
 }
 
 /*
