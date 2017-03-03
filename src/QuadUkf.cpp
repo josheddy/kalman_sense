@@ -1,8 +1,10 @@
 #include "QuadUkf.h"
 
-QuadUkf::QuadUkf(ros::Publisher pub)
+QuadUkf::QuadUkf(ros::Publisher poseWithCovStampedPub,
+                 ros::Publisher poseArrayPub)
 {
-  publisher = pub;
+  poseWithCovStampedPublisher = poseWithCovStampedPub;
+  poseArrayPublisher = poseArrayPub;
 
   numStates = 16;
   numSensors = 10;
@@ -22,7 +24,7 @@ QuadUkf::QuadUkf(ros::Publisher pub)
   Eigen::MatrixXd initCov = Eigen::MatrixXd::Identity(numStates, numStates);
   initCov = initCov * 0.01;
   //double initTimeStamp = ros::Time::now().toSec();
-  now = ros::Time::now().toSec(); //TODO this used to be toNSec(). Why?
+  now = ros::Time::now().toSec();
   double init_dt = 0.0001;
   QuadUkf::QuadBelief initBelief {now, init_dt, initState, initCov};
   lastBelief = initBelief;
@@ -41,6 +43,10 @@ QuadUkf::QuadUkf(ros::Publisher pub)
   lastPoseMsg.pose.pose.position.x = initPosition(0);
   lastPoseMsg.pose.pose.position.y = initPosition(1);
   lastPoseMsg.pose.pose.position.z = initPosition(2);
+
+  quadPoseArray.poses.clear();
+  quadPoseArray.header.frame_id = "map";
+  quadPoseArray.header.stamp = ros::Time(); // TODO Is this right?
 }
 
 QuadUkf::QuadUkf(QuadUkf&& other)
@@ -56,10 +62,12 @@ QuadUkf::QuadUkf(QuadUkf&& other)
   R_SensorNoiseCov = std::move(other.R_SensorNoiseCov);
   other.R_SensorNoiseCov = Eigen::MatrixXd::Zero(1, 1);
 
-  publisher = std::move(other.publisher);
   ros::NodeHandle n;
+  poseWithCovStampedPublisher = std::move(other.poseWithCovStampedPublisher);
+  poseArrayPublisher = std::move(other.poseArrayPublisher);
   ros::Publisher p = n.advertise<std_msgs::Empty>("empty", 1);
-  other.publisher = p;
+  other.poseWithCovStampedPublisher = p;
+  other.poseArrayPublisher = p;
 
   H_SensorMap = std::move(other.H_SensorMap);
   other.H_SensorMap = Eigen::MatrixXd::Zero(1, 1);
@@ -76,8 +84,6 @@ QuadUkf::~QuadUkf()
  */
 void QuadUkf::imuCallback(const sensor_msgs::ImuConstPtr &msg_in)
 {
-  std::cout << "imu cb started" << std::endl;
-
   mtx.try_lock_for(std::chrono::milliseconds(100));
 
   QuadBelief xB = lastBelief;
@@ -100,17 +106,21 @@ void QuadUkf::imuCallback(const sensor_msgs::ImuConstPtr &msg_in)
       b.state),
                           b.covariance};
   qb.state.quaternion.normalize();
+
+  std::cout << "IMU Last Quat:\n"
+      << lastBelief.state.quaternion.coeffs().normalized() << std::endl;
+  std::cout << "IMU Next Quat:\n" << qb.state.quaternion.coeffs().normalized()
+      << std::endl;
+  qb.state.quaternion = chooseQuat(lastBelief.state.quaternion,
+                                   qb.state.quaternion);
   lastBelief = qb;
 
   // Publish new pose message
-  geometry_msgs::PoseWithCovarianceStamped msg_out;
-  msg_out = quadBeliefToPoseWithCovStamped(lastBelief);
-  publisher.publish(msg_out);
+  geometry_msgs::PoseWithCovarianceStamped pwcs;
+  pwcs = quadBeliefToPoseWithCovStamped(lastBelief);
+  poseWithCovStampedPublisher.publish(pwcs);
 
   mtx.unlock();
-
-  std::cout << "velocity:\n" << lastBelief.state.velocity << std::endl;
-  std::cout << "imu cb finished" << std::endl;
 }
 
 /*
@@ -120,7 +130,7 @@ void QuadUkf::imuCallback(const sensor_msgs::ImuConstPtr &msg_in)
 void QuadUkf::poseCallback(
     const geometry_msgs::PoseWithCovarianceStampedConstPtr &msg_in)
 {
-  std::cout << "pose cb started" << std::endl;
+  //std::cout << "pose cb started" << std::endl;
 
   mtx.try_lock_for(std::chrono::milliseconds(100));
 
@@ -132,8 +142,7 @@ void QuadUkf::poseCallback(
   z(4) = -msg_in->pose.pose.orientation.z;
   z(5) = -msg_in->pose.pose.orientation.y;
   z(6) = msg_in->pose.pose.orientation.x;
-  double dtPose = msg_in->header.stamp.toSec()
-      - lastPoseMsg.header.stamp.sec;
+  double dtPose = msg_in->header.stamp.toSec() - lastPoseMsg.header.stamp.sec;
   z(7) = (z(0) - lastPoseMsg.pose.pose.position.x) / dtPose;
   z(8) = (z(1) - lastPoseMsg.pose.pose.position.y) / dtPose;
   z(9) = (z(2) - lastPoseMsg.pose.pose.position.z) / dtPose;
@@ -158,16 +167,29 @@ void QuadUkf::poseCallback(
   UnscentedKf::Belief currStateAndCov = correctState(xPred, P, z,
                                                      R_SensorNoiseCov);
 
+  Eigen::Quaterniond lastQuat = lastBelief.state.quaternion;
+
   lastBelief.dt = dt;
   lastBelief.state = eigenToQuadState(currStateAndCov.state);
-  lastBelief.state.quaternion.normalize();
+  std::cout << "Pose Last Quat:\n" << lastQuat.coeffs().normalized()
+      << std::endl;
+  std::cout << "Pose Next Quat:\n"
+      << lastBelief.state.quaternion.coeffs().normalized() << std::endl;
+  lastBelief.state.quaternion = chooseQuat(lastQuat,
+                                           lastBelief.state.quaternion);
   lastBelief.covariance = currStateAndCov.covariance;
   lastBelief.timeStamp = msg_in->header.stamp.toSec();
 
-  // Publish new pose message
-  geometry_msgs::PoseWithCovarianceStamped msg_out;
-  msg_out = quadBeliefToPoseWithCovStamped(lastBelief);
-  publisher.publish(msg_out);
+  // Publish new pose message and update quadPoseArray.
+  geometry_msgs::PoseWithCovarianceStamped pwcs;
+  pwcs = quadBeliefToPoseWithCovStamped(lastBelief);
+  poseWithCovStampedPublisher.publish(pwcs);
+  quadPoseArray.poses.insert(quadPoseArray.poses.begin(), 1, pwcs.pose.pose);
+  if (quadPoseArray.poses.size() > POSE_ARRAY_SIZE)
+  {
+    quadPoseArray.poses.pop_back();
+  }
+  poseArrayPublisher.publish(quadPoseArray);
 
   lastPoseMsg.header.stamp.sec = msg_in->header.stamp.toSec();
   lastPoseMsg.pose.pose.position.x = msg_in->pose.pose.position.x;
@@ -175,9 +197,29 @@ void QuadUkf::poseCallback(
   lastPoseMsg.pose.pose.position.z = -msg_in->pose.pose.position.z;
 
   mtx.unlock();
+}
 
-  std::cout << "velocity:\n" << lastBelief.state.velocity << std::endl;
-  std::cout << "pose cb finished" << std::endl;
+Eigen::Quaterniond QuadUkf::chooseQuat(Eigen::Quaterniond lastQuat,
+                                       Eigen::Quaterniond nextQuat)
+{
+  Eigen::Vector4d lastVec, nextVec;
+  lastVec = lastQuat.normalized().coeffs();
+  nextVec = nextQuat.normalized().coeffs();
+
+  double sum = (lastVec + nextVec).norm();
+  double diff = (lastVec - nextVec).norm();
+
+  Eigen::Quaterniond out;
+  if (sum > diff)
+  {
+    out.coeffs() = nextVec;
+  }
+  else
+  {
+    std::cout << "Negated Quaternion" << std::endl;
+    out.coeffs() = -nextVec;
+  }
+  return out;
 }
 
 geometry_msgs::PoseWithCovarianceStamped QuadUkf::quadBeliefToPoseWithCovStamped(

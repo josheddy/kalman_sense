@@ -4,6 +4,8 @@
 #include "UnscentedKf.h"
 #include "ros/ros.h"
 #include "geometry_msgs/PoseWithCovarianceStamped.h"
+#include "geometry_msgs/PoseStamped.h"
+#include "geometry_msgs/PoseArray.h"
 #include "sensor_msgs/Imu.h"
 #include <std_msgs/Empty.h>
 #include <iostream>
@@ -13,7 +15,7 @@
 class QuadUkf : public UnscentedKf
 {
 public:
-  QuadUkf(ros::Publisher pub);
+  QuadUkf(ros::Publisher poseWithCovStampedPub, ros::Publisher poseArrayPub);
   QuadUkf(QuadUkf&& other);
   ~QuadUkf();
 
@@ -23,8 +25,6 @@ public:
 
   Eigen::VectorXd processFunc(const Eigen::VectorXd stateVec, const double dt);
   Eigen::VectorXd observationFunc(const Eigen::VectorXd stateVec);
-
-  geometry_msgs::PoseWithCovarianceStamped lastPoseMsg;
 
 private:
   struct QuadState
@@ -44,20 +44,26 @@ private:
     Eigen::MatrixXd covariance;
   } lastBelief;
 
+  geometry_msgs::PoseWithCovarianceStamped lastPoseMsg;
+  geometry_msgs::PoseArray quadPoseArray;
+  const int POSE_ARRAY_SIZE = 1000;
+
   const Eigen::Vector3d GRAVITY_ACCEL {0, 0, 9.81}; // Gravity vector in inertial frame
 
   double now;
 
   std::timed_mutex mtx;
 
-  //const int numStates = 16; //TODO Do I still need this based on how numStates is set in UnscentedKf.cpp?
-  Eigen::MatrixXd Q_ProcNoiseCov, R_SensorNoiseCov;
+  Eigen::MatrixXd Q_ProcNoiseCov, R_SensorNoiseCov, H_SensorMap;
 
-  ros::Publisher publisher;
-  Eigen::MatrixXd H_SensorMap; // Observation model matrix H
+  ros::Publisher poseWithCovStampedPublisher;
+  ros::Publisher poseArrayPublisher;
 
   geometry_msgs::PoseWithCovarianceStamped quadBeliefToPoseWithCovStamped(
       QuadUkf::QuadBelief b);
+
+  Eigen::Quaterniond chooseQuat(Eigen::Quaterniond lastQuat,
+                                Eigen::Quaterniond nextQuat);
   Eigen::MatrixXd generateBigOmegaMat(
       const Eigen::Vector3d angular_velocity) const;
   Eigen::VectorXd quadStateToEigen(const QuadUkf::QuadState qs) const;

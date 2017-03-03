@@ -41,11 +41,8 @@ UnscentedKf::Belief UnscentedKf::correctState(Eigen::VectorXd x,
                                                              meanWeights,
                                                              covarianceWeights,
                                                              R);
-  std::cout << "did unscentedSensorTransform" << std::endl;
-
   Eigen::VectorXd zPred = sensorTf.vector;  // Expected sensor vector
   Eigen::MatrixXd P_zz = sensorTf.covariance;  // Sensor/sensor covariance
-  std::cout << "zPred\n" << zPred << std::endl;
 
   // Compute state/sensor cross-covariance
   UnscentedKf::SigmaPointSet predPointSet {x, sigmaPts};
@@ -56,23 +53,18 @@ UnscentedKf::Belief UnscentedKf::correctState(Eigen::VectorXd x,
   Eigen::MatrixXd P_xz = Eigen::MatrixXd::Zero(numStates, numSensors);
   P_xz = predDeviations * covarianceWeights.asDiagonal()
       * sensorTf.deviations.transpose();
-  std::cout << "did P_xz" << std::endl;
 
   // Compute Kalman gain
   Eigen::MatrixXd K = Eigen::MatrixXd::Zero(numStates, numSensors);
   K = P_xz * P_zz.inverse();
-  std::cout << "did K\n" << K << std::endl;
-
 
   // Update state vector
   Eigen::VectorXd xCorr = Eigen::VectorXd::Zero(numStates);
   xCorr = x + K * (z - zPred);
-  std::cout << "did xCorr" << std::endl;
 
   // Update state covariance
   Eigen::MatrixXd PCorr = Eigen::MatrixXd::Zero(numStates, numStates);
   PCorr = P - K * P_xz.transpose();
-  std::cout << "did PCorr" << std::endl;
 
   //PCorr = PPred - K * P_zz * K.transpose()?
 
