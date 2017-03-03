@@ -115,10 +115,16 @@ void QuadUkf::imuCallback(const sensor_msgs::ImuConstPtr &msg_in)
                                    qb.state.quaternion);
   lastBelief = qb;
 
-  // Publish new pose message
+  // Publish new pose message and update quadPoseArray
   geometry_msgs::PoseWithCovarianceStamped pwcs;
   pwcs = quadBeliefToPoseWithCovStamped(lastBelief);
   poseWithCovStampedPublisher.publish(pwcs);
+  quadPoseArray.poses.insert(quadPoseArray.poses.begin(), 1, pwcs.pose.pose);
+  if (quadPoseArray.poses.size() > POSE_ARRAY_SIZE)
+  {
+    quadPoseArray.poses.pop_back();
+  }
+  poseArrayPublisher.publish(quadPoseArray);
 
   mtx.unlock();
 }
@@ -147,6 +153,15 @@ void QuadUkf::poseCallback(
   z(8) = (z(1) - lastPoseMsg.pose.pose.position.y) / dtPose;
   z(9) = (z(2) - lastPoseMsg.pose.pose.position.z) / dtPose;
 
+  Eigen::Quaterniond inQuat;
+  inQuat.x() = z(3);
+  inQuat.y() = z(4);
+  inQuat.z() = z(5);
+  inQuat.w() = z(6);
+  Eigen::Vector4d chosenQuat =
+      chooseQuat(lastBelief.state.quaternion, inQuat).coeffs();
+  z.block<4, 1>(3, 0) = chosenQuat;
+
   double dt = msg_in->header.stamp.toSec() - lastBelief.timeStamp;
 
   // Predict state at time of pose message
@@ -167,16 +182,8 @@ void QuadUkf::poseCallback(
   UnscentedKf::Belief currStateAndCov = correctState(xPred, P, z,
                                                      R_SensorNoiseCov);
 
-  Eigen::Quaterniond lastQuat = lastBelief.state.quaternion;
-
   lastBelief.dt = dt;
   lastBelief.state = eigenToQuadState(currStateAndCov.state);
-  std::cout << "Pose Last Quat:\n" << lastQuat.coeffs().normalized()
-      << std::endl;
-  std::cout << "Pose Next Quat:\n"
-      << lastBelief.state.quaternion.coeffs().normalized() << std::endl;
-  lastBelief.state.quaternion = chooseQuat(lastQuat,
-                                           lastBelief.state.quaternion);
   lastBelief.covariance = currStateAndCov.covariance;
   lastBelief.timeStamp = msg_in->header.stamp.toSec();
 
