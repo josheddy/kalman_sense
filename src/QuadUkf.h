@@ -47,9 +47,9 @@ private:
 
   geometry_msgs::PoseWithCovarianceStamped lastPoseMsg;
   geometry_msgs::PoseArray quadPoseArray;
-  const int POSE_ARRAY_SIZE = 1000;
+  const int POSE_ARRAY_SIZE = 5000;
 
-  const Eigen::Vector3d GRAVITY_ACCEL {0, 0, 9.81}; // Gravity vector in inertial frame
+  const Eigen::Vector3d GRAVITY_ACCEL {0, 0, -9.81}; // Gravity vector in inertial frame
 
   std::timed_mutex mtx;
 

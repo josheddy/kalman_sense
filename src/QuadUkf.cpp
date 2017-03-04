@@ -13,7 +13,7 @@ QuadUkf::QuadUkf(ros::Publisher poseWithCovStampedPub,
   // Define initial position, orientation, velocity, angular velocity, and acceleration
   Eigen::Quaterniond initQuat = Eigen::Quaterniond::Identity();
   Eigen::Vector3d initPosition, initVelocity, initAngVel, initAcceleration;
-  initPosition << 0, 0, -1; // "one meter above the ground"
+  initPosition << 0, 0, 1; // "one meter above the ground"
   initVelocity = Eigen::Vector3d::Zero();
   initAngVel = Eigen::Vector3d::Zero();
   initAcceleration = Eigen::Vector3d::Zero();
@@ -83,12 +83,12 @@ void QuadUkf::imuCallback(const sensor_msgs::ImuConstPtr &msg_in)
   mtx.try_lock_for(std::chrono::milliseconds(100));
 
   QuadBelief xB = lastBelief;
-  xB.state.angular_velocity(0) = -msg_in->angular_velocity.x;
+  xB.state.angular_velocity(0) = msg_in->angular_velocity.x;
   xB.state.angular_velocity(1) = -msg_in->angular_velocity.y;
-  xB.state.angular_velocity(2) = -msg_in->angular_velocity.z;
-  xB.state.acceleration(0) = msg_in->linear_acceleration.x;
+  xB.state.angular_velocity(2) = msg_in->angular_velocity.z;
+  xB.state.acceleration(0) = -msg_in->linear_acceleration.x;
   xB.state.acceleration(1) = msg_in->linear_acceleration.y;
-  xB.state.acceleration(2) = -msg_in->linear_acceleration.z; // Positive z is down
+  xB.state.acceleration(2) = msg_in->linear_acceleration.z;
 
   // Remove gravity
   xB.state.acceleration = xB.state.acceleration
@@ -124,12 +124,12 @@ void QuadUkf::poseCallback(
   mtx.try_lock_for(std::chrono::milliseconds(100));
 
   Eigen::VectorXd z(numSensors);
-  z(0) = msg_in->pose.pose.position.x;
+  z(0) = -msg_in->pose.pose.position.x;
   z(1) = msg_in->pose.pose.position.y;
-  z(2) = -msg_in->pose.pose.position.z;
-  z(3) = -msg_in->pose.pose.orientation.w;
+  z(2) = msg_in->pose.pose.position.z;
+  z(3) = msg_in->pose.pose.orientation.w;
   z(4) = -msg_in->pose.pose.orientation.z;
-  z(5) = -msg_in->pose.pose.orientation.y;
+  z(5) = msg_in->pose.pose.orientation.y;
   z(6) = msg_in->pose.pose.orientation.x;
   double dtPose = msg_in->header.stamp.toSec() - lastPoseMsg.header.stamp.sec;
   z(7) = (z(0) - lastPoseMsg.pose.pose.position.x) / dtPose;
@@ -176,9 +176,9 @@ void QuadUkf::poseCallback(
   updatePoseArray(pwcs);
 
   lastPoseMsg.header.stamp.sec = msg_in->header.stamp.toSec();
-  lastPoseMsg.pose.pose.position.x = msg_in->pose.pose.position.x;
+  lastPoseMsg.pose.pose.position.x = -msg_in->pose.pose.position.x;
   lastPoseMsg.pose.pose.position.y = msg_in->pose.pose.position.y;
-  lastPoseMsg.pose.pose.position.z = -msg_in->pose.pose.position.z;
+  lastPoseMsg.pose.pose.position.z = msg_in->pose.pose.position.z;
 
   mtx.unlock();
 }
