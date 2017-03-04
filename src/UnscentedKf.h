@@ -31,9 +31,8 @@ private:
   const double ALPHA = 0.001;
   const double BETA = 2;
   const double KAPPA = 0;
-
   const double LAMBDA = pow(ALPHA, 2) * (numStates + KAPPA) - numStates;
-  const double SIGMA_PT_SCALING_COEFF = 3;//pow(numStates + LAMBDA, 0.5);
+  const double SIGMA_PT_SCALING_COEFF = 3;
 
   virtual Eigen::VectorXd processFunc(Eigen::VectorXd x, double dt) = 0;
   virtual Eigen::VectorXd observationFunc(Eigen::VectorXd z) = 0;
@@ -52,28 +51,32 @@ private:
     Eigen::MatrixXd sigmaPoints;
   };
 
-  Transform unscentedStateTransform(Eigen::MatrixXd sigmaPts,
-                                    Eigen::VectorXd meanWts,
-                                    Eigen::VectorXd covWts,
-                                    Eigen::MatrixXd measNoiseCov, double dt);
-  SigmaPointSet sampleStateSpace(Eigen::MatrixXd sigmaPts,
-                                 Eigen::VectorXd meanWts, double dt);
+  Transform unscentedStateTransform(const Eigen::MatrixXd sigmaPts,
+                                    const Eigen::VectorXd meanWts,
+                                    const Eigen::VectorXd covWts,
+                                    const Eigen::MatrixXd measNoiseCov,
+                                    const double dt);
+  SigmaPointSet sampleStateSpace(const Eigen::MatrixXd sigmaPts,
+                                 const Eigen::VectorXd meanWts,
+                                 const double dt);
 
-  Transform unscentedSensorTransform(Eigen::MatrixXd sigmaPts,
-                                     Eigen::VectorXd meanWts,
-                                     Eigen::VectorXd covWts,
-                                     Eigen::MatrixXd noiseCov);
-  SigmaPointSet sampleSensorSpace(Eigen::MatrixXd sigmaPts,
-                                  Eigen::VectorXd meanWts);
+  Transform unscentedSensorTransform(const Eigen::MatrixXd sigmaPts,
+                                     const Eigen::VectorXd meanWts,
+                                     const Eigen::VectorXd covWts,
+                                     const Eigen::MatrixXd noiseCov);
+  SigmaPointSet sampleSensorSpace(const Eigen::MatrixXd sigmaPts,
+                                  const Eigen::VectorXd meanWts);
 
-  Eigen::MatrixXd computeCovariance(Eigen::MatrixXd devs,
-                                    Eigen::VectorXd covWts,
-                                    Eigen::MatrixXd noiseCov) const;
-  Eigen::MatrixXd computeDeviations(UnscentedKf::SigmaPointSet sigmaPts) const;
+  Eigen::MatrixXd computeCovariance(const Eigen::MatrixXd devs,
+                                    const Eigen::VectorXd covWts,
+                                    const Eigen::MatrixXd noiseCov) const;
+  Eigen::MatrixXd computeDeviations(
+      const UnscentedKf::SigmaPointSet sigmaPts) const;
   Eigen::MatrixXd computeSigmaPoints(const Eigen::VectorXd x,
                                      const Eigen::MatrixXd P,
                                      const double scalingCoeff) const;
-  Eigen::MatrixXd fillMatrixWithVector(Eigen::VectorXd vec, int numCols) const;
+  Eigen::MatrixXd fillMatrixWithVector(const Eigen::VectorXd vec,
+                                       const int numCols) const;
 };
 
 #endif /* UNSCENTEDKF_H_ */

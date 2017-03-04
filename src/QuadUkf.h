@@ -2,12 +2,13 @@
 #define QUADUKF_H_
 
 #include "UnscentedKf.h"
+
 #include "ros/ros.h"
 #include "geometry_msgs/PoseWithCovarianceStamped.h"
-#include "geometry_msgs/PoseStamped.h"
 #include "geometry_msgs/PoseArray.h"
 #include "sensor_msgs/Imu.h"
-#include <std_msgs/Empty.h>
+#include "std_msgs/Empty.h"
+
 #include <iostream>
 #include <mutex>
 #include <chrono>
@@ -50,8 +51,6 @@ private:
 
   const Eigen::Vector3d GRAVITY_ACCEL {0, 0, 9.81}; // Gravity vector in inertial frame
 
-  double now;
-
   std::timed_mutex mtx;
 
   Eigen::MatrixXd Q_ProcNoiseCov, R_SensorNoiseCov, H_SensorMap;
@@ -60,10 +59,11 @@ private:
   ros::Publisher poseArrayPublisher;
 
   geometry_msgs::PoseWithCovarianceStamped quadBeliefToPoseWithCovStamped(
-      QuadUkf::QuadBelief b);
+      const QuadUkf::QuadBelief b) const;
+  void updatePoseArray(const geometry_msgs::PoseWithCovarianceStamped p);
 
-  Eigen::Quaterniond chooseQuat(Eigen::Quaterniond lastQuat,
-                                Eigen::Quaterniond nextQuat);
+  Eigen::Quaterniond checkQuat(const Eigen::Quaterniond lastQuat,
+                               const Eigen::Quaterniond nextQuat) const;
   Eigen::MatrixXd generateBigOmegaMat(
       const Eigen::Vector3d angular_velocity) const;
   Eigen::VectorXd quadStateToEigen(const QuadUkf::QuadState qs) const;

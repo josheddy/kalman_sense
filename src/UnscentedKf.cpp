@@ -47,8 +47,6 @@ UnscentedKf::Belief UnscentedKf::correctState(Eigen::VectorXd x,
   // Compute state/sensor cross-covariance
   UnscentedKf::SigmaPointSet predPointSet {x, sigmaPts};
   Eigen::MatrixXd predDeviations = computeDeviations(predPointSet);
-  //std::cout << "predDeviations:\n" << predDeviations << std::endl;
-  //std::cout << "deviations\n" << sensorTf.deviations << std::endl;
 
   Eigen::MatrixXd P_xz = Eigen::MatrixXd::Zero(numStates, numSensors);
   P_xz = predDeviations * covarianceWeights.asDiagonal()
@@ -66,15 +64,14 @@ UnscentedKf::Belief UnscentedKf::correctState(Eigen::VectorXd x,
   Eigen::MatrixXd PCorr = Eigen::MatrixXd::Zero(numStates, numStates);
   PCorr = P - K * P_xz.transpose();
 
-  //PCorr = PPred - K * P_zz * K.transpose()?
-
   UnscentedKf::Belief bel {xCorr, PCorr};
   return bel;
 }
 
 UnscentedKf::Transform UnscentedKf::unscentedStateTransform(
-    Eigen::MatrixXd sigmaPts, Eigen::VectorXd meanWts, Eigen::VectorXd covWts,
-    Eigen::MatrixXd noiseCov, double dt)
+    const Eigen::MatrixXd sigmaPts, const Eigen::VectorXd meanWts,
+    const Eigen::VectorXd covWts, const Eigen::MatrixXd noiseCov,
+    const double dt)
 {
   int n = sigmaPts.rows();
   int L = sigmaPts.cols();
@@ -94,8 +91,8 @@ UnscentedKf::Transform UnscentedKf::unscentedStateTransform(
 }
 
 UnscentedKf::Transform UnscentedKf::unscentedSensorTransform(
-    Eigen::MatrixXd sigmaPts, Eigen::VectorXd meanWts, Eigen::VectorXd covWts,
-    Eigen::MatrixXd noiseCov)
+    const Eigen::MatrixXd sigmaPts, const Eigen::VectorXd meanWts,
+    const Eigen::VectorXd covWts, const Eigen::MatrixXd noiseCov)
 {
   int L = sigmaPts.cols();
   Eigen::VectorXd vec = Eigen::VectorXd::Zero(numSensors);
@@ -118,8 +115,6 @@ Eigen::MatrixXd UnscentedKf::computeSigmaPoints(const Eigen::VectorXd x,
                                                 const double scalingCoeff) const
 {
   // Compute lower Cholesky factor "A" of the given covariance matrix P
-//  Eigen::LDLT<Eigen::MatrixXd> ldltOfCovMat(P); //TODO This causes rapid drift, but I'm not sure why. I have since switched from LDLT to LLT.
-//  Eigen::MatrixXd L = ldltOfCovMat.matrixU().transpose();
   Eigen::LLT<Eigen::MatrixXd> lltOfCovMat(P);
   Eigen::MatrixXd L = lltOfCovMat.matrixL();
   Eigen::MatrixXd A = scalingCoeff * L;
@@ -156,14 +151,15 @@ Eigen::MatrixXd UnscentedKf::computeCovariance(Eigen::MatrixXd deviations,
 }
 
 UnscentedKf::SigmaPointSet UnscentedKf::sampleStateSpace(
-    Eigen::MatrixXd sigmaPts, Eigen::VectorXd meanWts, double dt)
+    const Eigen::MatrixXd sigmaPts, const Eigen::VectorXd meanWts,
+    const double dt)
 {
   int n = sigmaPts.rows();
   int L = sigmaPts.cols();
 
   Eigen::VectorXd vec = Eigen::VectorXd::Zero(n);
   Eigen::MatrixXd sigmas = Eigen::MatrixXd::Zero(n, L);
-  for (int i = 0; i < L; i++)
+  for (int i = 0; i < L; ++i)
   {
     sigmas.col(i) = processFunc(sigmaPts.col(i), dt);
     vec += meanWts(i) * sigmas.col(i);
@@ -174,13 +170,13 @@ UnscentedKf::SigmaPointSet UnscentedKf::sampleStateSpace(
 }
 
 UnscentedKf::SigmaPointSet UnscentedKf::sampleSensorSpace(
-    Eigen::MatrixXd sigmaPts, Eigen::VectorXd meanWts)
+    const Eigen::MatrixXd sigmaPts, const Eigen::VectorXd meanWts)
 {
   int L = sigmaPts.cols();
 
   Eigen::VectorXd vec = Eigen::VectorXd::Zero(numSensors);
   Eigen::MatrixXd sigmas = Eigen::MatrixXd::Zero(numSensors, L);
-  for (int i = 0; i < L; i++)
+  for (int i = 0; i < L; ++i)
   {
     sigmas.col(i) = observationFunc(sigmaPts.col(i));
     vec = vec + meanWts(i) * sigmas.col(i);
@@ -190,12 +186,12 @@ UnscentedKf::SigmaPointSet UnscentedKf::sampleSensorSpace(
   return out;
 }
 
-Eigen::MatrixXd UnscentedKf::fillMatrixWithVector(Eigen::VectorXd vec,
-                                                  int numCols) const
+Eigen::MatrixXd UnscentedKf::fillMatrixWithVector(const Eigen::VectorXd vec,
+                                                  const int numCols) const
 {
   int numRows = vec.rows();
   Eigen::MatrixXd mat(numRows, numCols);
-  for (int i = 0; i < numCols; i++)
+  for (int i = 0; i < numCols; ++i)
   {
     mat.col(i) = vec;
   }
@@ -207,7 +203,7 @@ void UnscentedKf::setWeights()
   // Set up mean weights
   meanWeights = Eigen::VectorXd::Zero(2 * numStates + 1);
   meanWeights(0) = LAMBDA / (numStates + LAMBDA);
-  for (int i = 1; i < meanWeights.rows(); i++)
+  for (int i = 1; i < meanWeights.rows(); ++i)
   {
     meanWeights(i) = 1 / (2 * (numStates + LAMBDA));
   }
