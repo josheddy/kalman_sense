@@ -5,9 +5,9 @@ int main(int argc, char **argv) {
   ros::NodeHandle nh;
 
   ros::Publisher poseStampedPub = nh.advertise<geometry_msgs::PoseStamped>(
-      "pose", 1);
+      "pose", 1000);
   ros::Publisher poseWithCovStampedPub = nh
-      .advertise<geometry_msgs::PoseWithCovarianceStamped>("poseWithCov", 1);
+      .advertise<geometry_msgs::PoseWithCovarianceStamped>("poseWithCov", 1000);
   ros::Publisher poseArrayPub = nh.advertise<geometry_msgs::PoseArray>(
       "poseHistory", 1);
 

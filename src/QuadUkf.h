@@ -12,8 +12,9 @@
 #include "sensor_msgs/Imu.h"
 #include "std_msgs/Empty.h"
 
-class QuadUkf : public UnscentedKf {
- public:
+class QuadUkf : public UnscentedKf
+{
+public:
   QuadUkf(ros::Publisher poseStampedPub, ros::Publisher poseWithCovStampedPub,
           ros::Publisher poseArrayPub);
   QuadUkf(QuadUkf&& other);
@@ -26,8 +27,9 @@ class QuadUkf : public UnscentedKf {
   Eigen::VectorXd processFunc(const Eigen::VectorXd stateVec, const double dt);
   Eigen::VectorXd observationFunc(const Eigen::VectorXd stateVec);
 
- private:
-  struct QuadState {
+private:
+  struct QuadState
+  {
     Eigen::Vector3d position;
     Eigen::Quaterniond quaternion;
     Eigen::Vector3d velocity;
@@ -35,18 +37,26 @@ class QuadUkf : public UnscentedKf {
     Eigen::Vector3d acceleration;
   };
 
-  struct QuadBelief {
+  struct QuadBelief
+  {
     double timeStamp;
     double dt;
     QuadUkf::QuadState state;
     Eigen::MatrixXd covariance;
   } lastBelief;
 
+  enum stateVars
+  {
+    POS_X = 0, POS_Y = 1, POS_Z = 2, QUAT_X = 3, QUAT_Y = 4, QUAT_Z = 5,
+    QUAT_W = 6, VEL_X = 7, VEL_Y = 8, VEL_Z = 9, ANGVEL_X = 10, ANGVEL_Y = 11,
+    ANGVEL_Z = 12, ACCEL_X = 13, ACCEL_Y = 14, ACCEL_Z = 15
+  };
+
   geometry_msgs::PoseWithCovarianceStamped lastPoseMsg;
   geometry_msgs::PoseArray quadPoseArray;
-  const int POSE_ARRAY_SIZE = 10000;
+  const int POSE_ARRAY_SIZE = 10000;  // number of poses to keep for plotting
 
-  const Eigen::Vector3d GRAVITY_ACCEL { 0, 0, -9.81 };
+  const Eigen::Vector3d GRAVITY_ACCEL {0, 0, -9.81};
 
   std::timed_mutex mtx;
 
@@ -56,11 +66,10 @@ class QuadUkf : public UnscentedKf {
   ros::Publisher poseWithCovStampedPublisher;
   ros::Publisher poseArrayPublisher;
 
-  geometry_msgs::PoseStamped quadBeliefToPoseStamped(
-      const QuadUkf::QuadBelief b) const;
+  geometry_msgs::PoseStamped quadBeliefToPoseStamped(const QuadBelief b) const;
   geometry_msgs::PoseWithCovarianceStamped quadBeliefToPoseWithCovStamped(
-      const QuadUkf::QuadBelief b) const;
-  void publishAllPoseMessages(QuadUkf::QuadBelief b);
+      const QuadBelief b) const;
+  void publishAllPoseMessages(QuadBelief b);
   void updatePoseArray(const geometry_msgs::PoseWithCovarianceStamped p);
 
   Eigen::Quaterniond checkQuat(const Eigen::Quaterniond lastQuat,

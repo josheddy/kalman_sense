@@ -3,12 +3,14 @@
 
 #include <Eigen/Dense>
 
-class UnscentedKf {
- public:
+class UnscentedKf
+{
+public:
   UnscentedKf();
   virtual ~UnscentedKf() = 0;
 
-  struct Belief {
+  struct Belief
+  {
     Eigen::VectorXd state;
     Eigen::MatrixXd covariance;
   };
@@ -22,7 +24,7 @@ class UnscentedKf {
   int numStates;
   int numSensors;
 
- private:
+private:
   Eigen::VectorXd meanWeights, covarianceWeights;
 
   // Tunable parameters
@@ -30,19 +32,21 @@ class UnscentedKf {
   const double BETA = 2;
   const double KAPPA = 0;
   const double LAMBDA = pow(ALPHA, 2) * (numStates + KAPPA) - numStates;
-  const double SIGMA_PT_SCALING_COEFF = 3;
+  const double SIGMA_POINT_SCALING_COEFF = 3;
 
   virtual Eigen::VectorXd processFunc(Eigen::VectorXd x, double dt) = 0;
   virtual Eigen::VectorXd observationFunc(Eigen::VectorXd z) = 0;
 
-  struct Transform {
+  struct Transform
+  {
     Eigen::VectorXd vector;
     Eigen::MatrixXd sigmaPoints;
     Eigen::MatrixXd covariance;
     Eigen::MatrixXd deviations;
   };
 
-  struct SigmaPointSet {
+  struct SigmaPointSet
+  {
     Eigen::VectorXd vector;
     Eigen::MatrixXd sigmaPoints;
   };
