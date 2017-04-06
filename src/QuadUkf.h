@@ -52,10 +52,12 @@ private:
     ANGVEL_Z = 12, ACCEL_X = 13, ACCEL_Y = 14, ACCEL_Z = 15
   };
 
+  Eigen::MatrixXd Q_ProcNoiseCov;
+  Eigen::MatrixXd SensorCovMatrixR;
   const double IMU_ACCEL_STD_DEV = 8.66124974095918 * pow(10, -6);
   const double IMU_GYRO_STD_DEV = 1.2184696791468346 * pow(10, -7);
-  const double Q_SCALING_COEFF = 1;
-  const double R_SCALING_COEFF = 0.1;
+  const double Q_SCALING_COEFF = 0.01;
+  const double R_SCALING_COEFF = 0.01;
 
   geometry_msgs::PoseWithCovarianceStamped lastPoseMsg;
   geometry_msgs::PoseArray quadPoseArray;
@@ -64,10 +66,6 @@ private:
   const Eigen::Vector3d GRAVITY_ACCEL {0, 0, -9.81};
 
   std::timed_mutex mtx;
-
-  Eigen::MatrixXd Q_ProcNoise;
-  Eigen::MatrixXd SensorCovMatrixR;
-  //Eigen::MatrixXd ObsMatrixH;  //TODO
 
   Eigen::MatrixXd ProcessCovMatrixQ(const double dt) const;
 

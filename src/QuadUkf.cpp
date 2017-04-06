@@ -16,7 +16,7 @@ QuadUkf::QuadUkf(ros::Publisher poseStampedPub,
   // acceleration.
   Eigen::Quaterniond initQuat = Eigen::Quaterniond::Identity();
   Eigen::Vector3d initPosition, initVelocity, initAngVel, initAcceleration;
-  initPosition << 0, 0, 1;  // "one meter above the origin"
+  initPosition << 0, 0, 1;  // "x = 0, y = 0, z = 1 meter above origin"
   initVelocity = Eigen::Vector3d::Zero();
   initAngVel = Eigen::Vector3d::Zero();
   initAcceleration = Eigen::Vector3d::Zero();
@@ -31,8 +31,8 @@ QuadUkf::QuadUkf(ros::Publisher poseStampedPub,
   QuadUkf::QuadBelief initBelief {initTimeStamp, init_dt, initState, initCov};
   lastBelief = initBelief;
 
-  // Initialize sensor noise covariance
-  Eigen::MatrixXd mainBlock(7, 7);
+  // Initialize sensor noise covariance matrix
+//  Eigen::MatrixXd mainBlock(7, 7);
 //  mainBlock << 1.60733370, 0.65393149, 0.02947270, 0.00164179, 0.02865161, 0.00472339,-0.00554183,
 //               0.65393149, 1.36437181, 0.02745309, 0.00088938, 0.01202295,-0.00082392,-0.00705118,
 //               0.02947270, 0.02745309, 0.00100832, 0.00002936, 0.00049179, 0.00007580,-0.00020808,
@@ -40,31 +40,19 @@ QuadUkf::QuadUkf(ros::Publisher poseStampedPub,
 //               0.02865161, 0.01202295, 0.00049179, 0.00005820, 0.00106645, 0.00002199,-0.00011233,
 //               0.00472339,-0.00082392, 0.00007580, 0.00000087, 0.00002199, 0.00003296,-0.00000482,
 //              -0.00554183,-0.00705118,-0.00020808,-0.00000714,-0.00011233,-0.00000482, 0.00005254;
-
-//  mainBlock << 0.068803823982644,-0.011060159092343,-0.018283119793103, 0.000875162055293,-0.000533421971516, 0.069040324719420, 0.030908864543203,
-//              -0.011060159092343, 0.061195928988031,-0.011983411150980,-0.000364109703193,-0.014848568448855,-0.044247344820758, 0.002241708711508,
-//              -0.018283119793103,-0.011983411150980, 0.203839922110168,-0.000561627716998,-0.019698003755862,-0.028042115890392,-0.097334869536661,
-//               0.000875162055293,-0.000364109703193,-0.000561627716998, 0.000036273349217,-0.000328626883735, 0.002532083304405, 0.001616812139461,
-//              -0.000533421971516,-0.014848568448855,-0.019698003755862,-0.000328626883735, 0.044173108984521, 0.005340560936865,-0.018017528485985,
-//               0.069040324719420,-0.044247344820758,-0.028042115890392, 0.002532083304405, 0.005340560936865, 0.261313913412434,-0.064126940818518,
-//               0.030908864543203, 0.002241708711508,-0.097334869536661, 0.001616812139461,-0.018017528485985,-0.064126940818518, 0.541811165645444;
-//  mainBlock *= pow(10, -7);
+//  SensorCovMatrixR.block(0, 0, 7, 7) = mainBlock;
   SensorCovMatrixR = R_SCALING_COEFF
       * Eigen::MatrixXd::Identity(numSensors, numSensors);
-//  SensorCovMatrixR.block(0, 0, 7, 7) = mainBlock;
-
-  Q_ProcNoise = Q_SCALING_COEFF
+  Q_ProcNoiseCov = Q_SCALING_COEFF
       * Eigen::MatrixXd::Identity(numStates, numStates);
 
-//  ObsMatrixH = Eigen::MatrixXd::Zero(numStates, numSensors);  //TODO This is never used.
-//  ObsMatrixH.block(0, 0, numSensors, numSensors) = Eigen::MatrixXd::Identity(
-//      numSensors, numSensors);
-
+  // Initialize last PTAM message for pseudovelocity corrections
   lastPoseMsg.header.stamp.sec = initTimeStamp;
   lastPoseMsg.pose.pose.position.x = initPosition(0);
   lastPoseMsg.pose.pose.position.y = initPosition(1);
   lastPoseMsg.pose.pose.position.z = initPosition(2);
 
+  // Initialize pose array for visualization in Rviz
   quadPoseArray.poses.clear();
   quadPoseArray.header.frame_id = "map";
   quadPoseArray.header.stamp = ros::Time();
@@ -84,9 +72,6 @@ QuadUkf::QuadUkf(QuadUkf&& other)
   ros::Publisher p = n.advertise<std_msgs::Empty>("empty", 1);
   other.poseWithCovStampedPublisher = p;
   other.poseArrayPublisher = p;
-
-//  ObsMatrixH = std::move(other.ObsMatrixH);  //TODO
-//  other.ObsMatrixH = Eigen::MatrixXd::Zero(1, 1);
 }
 
 QuadUkf::~QuadUkf()
@@ -97,25 +82,26 @@ void QuadUkf::imuCallback(const sensor_msgs::ImuConstPtr &msg_in)
 {
   mtx.try_lock_for(std::chrono::milliseconds(100));
 
-  QuadBelief xB = lastBelief;
-  xB.state.angular_velocity(0) = msg_in->angular_velocity.x;
-  xB.state.angular_velocity(1) = -msg_in->angular_velocity.y;
-  xB.state.angular_velocity(2) = msg_in->angular_velocity.z;
-  xB.state.acceleration(0) = -msg_in->linear_acceleration.x;
-  xB.state.acceleration(1) = msg_in->linear_acceleration.y;
-  xB.state.acceleration(2) = msg_in->linear_acceleration.z;
+  QuadBelief xHat = lastBelief;
+  xHat.state.angular_velocity(0) = msg_in->angular_velocity.x;
+  xHat.state.angular_velocity(1) = -msg_in->angular_velocity.y;
+  xHat.state.angular_velocity(2) = msg_in->angular_velocity.z;
+  xHat.state.acceleration(0) = -msg_in->linear_acceleration.x;
+  xHat.state.acceleration(1) = msg_in->linear_acceleration.y;
+  xHat.state.acceleration(2) = msg_in->linear_acceleration.z;
 
   // Remove gravity
-  xB.state.acceleration = xB.state.acceleration
-      - xB.state.quaternion.toRotationMatrix().inverse() * GRAVITY_ACCEL;
+  xHat.state.acceleration = xHat.state.acceleration
+      - xHat.state.quaternion.toRotationMatrix().inverse() * GRAVITY_ACCEL;
 
   // Predict next state and reset lastBelief
-  Eigen::VectorXd x = quadStateToEigen(xB.state);
-  xB.dt = msg_in->header.stamp.toSec() - lastBelief.timeStamp;
-  UnscentedKf::Belief b = predictState(x, xB.covariance, Q_ProcNoise, xB.dt);
-  QuadUkf::QuadBelief qb {msg_in->header.stamp.toSec(), xB.dt, eigenToQuadState(
-      b.state),
-                          b.covariance};
+  Eigen::VectorXd x = quadStateToEigen(xHat.state);
+  xHat.dt = msg_in->header.stamp.toSec() - lastBelief.timeStamp;
+  //Eigen::MatrixXd Q = (Q_SCALING_COEFF * ProcessCovMatrixQ(xHat.dt));
+  Eigen::MatrixXd Q = Q_ProcNoiseCov;
+  UnscentedKf::Belief b = predictState(x, xHat.covariance, Q, xHat.dt);
+  QuadUkf::QuadBelief qb {msg_in->header.stamp.toSec(), xHat.dt,
+                          eigenToQuadState(b.state), b.covariance};
   qb.state.quaternion = checkQuatContinuity(lastBelief.state.quaternion,
                                             qb.state.quaternion);
   lastBelief = qb;
@@ -140,7 +126,8 @@ void QuadUkf::poseCallback(
   z(QUAT_W) = msg_in->pose.pose.orientation.x;
 
   // Pseudovelocity correction
-  double dtPose = msg_in->header.stamp.toSec() - lastPoseMsg.header.stamp.toSec();
+  double dtPose = msg_in->header.stamp.toSec()
+      - lastPoseMsg.header.stamp.toSec();
   z(VEL_X) = (z(POS_X) - lastPoseMsg.pose.pose.position.x) / dtPose;
   z(VEL_Y) = (z(POS_Y) - lastPoseMsg.pose.pose.position.y) / dtPose;
   z(VEL_Z) = (z(POS_Z) - lastPoseMsg.pose.pose.position.z) / dtPose;
@@ -168,8 +155,8 @@ void QuadUkf::poseCallback(
   QuadUkf::QuadBelief xHat = lastBelief;
   xHat.state.velocity = lastBelief.state.velocity
       + lastBelief.state.acceleration * dt;
-  xHat.state.position = (xHat.state.velocity + lastBelief.state.velocity) / 2.0 * dt
-      + lastBelief.state.position;
+  xHat.state.position = (xHat.state.velocity + lastBelief.state.velocity) / 2.0
+      * dt + lastBelief.state.position;
   Eigen::MatrixXd Theta = quatIntegrationMatrix(
       lastBelief.state.angular_velocity);
   xHat.state.quaternion.coeffs() = lastBelief.state.quaternion.coeffs()
@@ -323,7 +310,7 @@ Eigen::VectorXd QuadUkf::observationFunc(const Eigen::VectorXd stateVec)
 
 /*
  * Given a vector of angular velocities in radians per second, returns the
- * 4-by-4 quaternion integration matrix.
+ * 4-by-4 angular rate integration matrix.
  */
 Eigen::MatrixXd QuadUkf::quatIntegrationMatrix(
     const Eigen::Vector3d angVel) const
@@ -415,7 +402,6 @@ Eigen::MatrixXd QuadUkf::ProcessCovMatrixQ(const double dt) const
 {
   Eigen::MatrixXd Q = Eigen::MatrixXd::Zero(numStates, numStates);
 
-  // Variance terms (main diagonal)
   const double posVariance = IMU_ACCEL_STD_DEV * pow(dt, 5) / 20.0;
   Q.block(0, 0, 3, 3) = posVariance * Eigen::MatrixXd::Identity(3, 3);
 
@@ -431,30 +417,30 @@ Eigen::MatrixXd QuadUkf::ProcessCovMatrixQ(const double dt) const
   const double accelVariance = IMU_ACCEL_STD_DEV * dt;
   Q.block(13, 13, 3, 3) = accelVariance * Eigen::MatrixXd::Identity(3, 3);
 
-  // Covariance (off-diagonal) terms
-  const double posVelCovariance = IMU_ACCEL_STD_DEV * pow(dt, 4) / 8.0;
-  Eigen::MatrixXd posVelBlock = posVelCovariance
-      * Eigen::MatrixXd::Identity(3, 3);
-  Q.block(0, 7, 3, 3) = posVelBlock;
-  Q.block(7, 0, 3, 3) = posVelBlock;
-
-  const double quatGyroCovariance = IMU_GYRO_STD_DEV * pow(dt, 2) / 2.0;
-  Eigen::MatrixXd quatGyroBlock = Eigen::MatrixXd::Constant(4, 3,
-                                                            quatGyroCovariance);
-  Q.block(3, 10, 4, 3) = quatGyroBlock;
-  Q.block(10, 3, 3, 4) = quatGyroBlock.transpose();
-
-  const double posAccelCovariance = IMU_ACCEL_STD_DEV * pow(dt, 3) / 6.0;
-  Eigen::MatrixXd posAccelBlock = posAccelCovariance
-      * Eigen::MatrixXd::Identity(3, 3);
-  Q.block(0, 13, 3, 3) = posAccelBlock;
-  Q.block(13, 0, 3, 3) = posAccelBlock;
-
-  const double velAccelCovariance = IMU_ACCEL_STD_DEV * pow(dt, 2) / 2.0;
-  Eigen::MatrixXd velAccelBlock = velAccelCovariance
-      * Eigen::MatrixXd::Identity(3, 3);
-  Q.block(7, 13, 3, 3) = velAccelBlock;
-  Q.block(13, 7, 3, 3) = velAccelBlock;
+  // Covariance (off-diagonal) terms //TODO
+//  const double posVelCovariance = IMU_ACCEL_STD_DEV * pow(dt, 4) / 8.0;
+//  Eigen::MatrixXd posVelBlock = posVelCovariance
+//      * Eigen::MatrixXd::Identity(3, 3);
+//  Q.block(0, 7, 3, 3) = posVelBlock;
+//  Q.block(7, 0, 3, 3) = posVelBlock;
+//
+//  const double quatGyroCovariance = IMU_GYRO_STD_DEV * pow(dt, 2) / 2.0;
+//  Eigen::MatrixXd quatGyroBlock = Eigen::MatrixXd::Constant(4, 3,
+//                                                            quatGyroCovariance);
+//  Q.block(3, 10, 4, 3) = quatGyroBlock;
+//  Q.block(10, 3, 3, 4) = quatGyroBlock.transpose();
+//
+//  const double posAccelCovariance = IMU_ACCEL_STD_DEV * pow(dt, 3) / 6.0;
+//  Eigen::MatrixXd posAccelBlock = posAccelCovariance
+//      * Eigen::MatrixXd::Identity(3, 3);
+//  Q.block(0, 13, 3, 3) = posAccelBlock;
+//  Q.block(13, 0, 3, 3) = posAccelBlock;
+//
+//  const double velAccelCovariance = IMU_ACCEL_STD_DEV * pow(dt, 2) / 2.0;
+//  Eigen::MatrixXd velAccelBlock = velAccelCovariance
+//      * Eigen::MatrixXd::Identity(3, 3);
+//  Q.block(7, 13, 3, 3) = velAccelBlock;
+//  Q.block(13, 7, 3, 3) = velAccelBlock;
 
   return Q;
 }

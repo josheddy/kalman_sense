@@ -16,7 +16,7 @@ UnscentedKf::Belief UnscentedKf::predictState(Eigen::VectorXd x,
 {
   // Compute sigma points around current estimated state
   Eigen::MatrixXd sigmaPts(numStates, 2 * numStates + 1);
-  sigmaPts = computeSigmaPoints(x, P, SIGMA_POINT_SCALING_COEFF);
+  sigmaPts = computeSigmaPoints(x, P, sigmaPointScalingCoeff);
 
   // Perform unscented transform on current estimated state to predict next
   // state and covariance
@@ -34,7 +34,7 @@ UnscentedKf::Belief UnscentedKf::correctState(Eigen::VectorXd x,
                                               Eigen::MatrixXd R)
 {
   Eigen::MatrixXd sigmaPts(numStates, 2 * numStates + 1);
-  sigmaPts = computeSigmaPoints(x, P, SIGMA_POINT_SCALING_COEFF);
+  sigmaPts = computeSigmaPoints(x, P, sigmaPointScalingCoeff);
 
   UnscentedKf::Transform sensorTf = unscentedSensorTransform(sigmaPts,
                                                              meanWeights,
@@ -131,20 +131,19 @@ Eigen::MatrixXd UnscentedKf::computeSigmaPoints(const Eigen::VectorXd x,
 }
 
 Eigen::MatrixXd UnscentedKf::computeDeviations(
-    UnscentedKf::SigmaPointSet sample) const
+    const UnscentedKf::SigmaPointSet sample) const
 {
   Eigen::VectorXd vec = sample.vector;
   Eigen::MatrixXd sigmaPts = sample.sigmaPoints;
-
   int numCols = sigmaPts.cols();
   Eigen::MatrixXd vecMat = fillMatrixWithVector(vec, numCols);
 
   return sigmaPts - vecMat;
 }
 
-Eigen::MatrixXd UnscentedKf::computeCovariance(Eigen::MatrixXd deviations,
-                                               Eigen::VectorXd covWts,
-                                               Eigen::MatrixXd noiseCov) const
+Eigen::MatrixXd UnscentedKf::computeCovariance(
+    const Eigen::MatrixXd deviations, const Eigen::VectorXd covWts,
+    const Eigen::MatrixXd noiseCov) const
 {
   return deviations * covWts.asDiagonal() * deviations.transpose() + noiseCov;
 }
@@ -155,7 +154,6 @@ UnscentedKf::SigmaPointSet UnscentedKf::sampleStateSpace(
 {
   int numRows = sigmaPts.rows();
   int numCols = sigmaPts.cols();
-
   Eigen::VectorXd vec = Eigen::VectorXd::Zero(numRows);
   Eigen::MatrixXd sigmas = Eigen::MatrixXd::Zero(numRows, numCols);
   for (int i = 0; i < numCols; ++i)
@@ -172,9 +170,8 @@ UnscentedKf::SigmaPointSet UnscentedKf::sampleSensorSpace(
     const Eigen::MatrixXd sigmaPts, const Eigen::VectorXd meanWts)
 {
   int numCols = sigmaPts.cols();
-
-  Eigen::VectorXd vec = Eigen::VectorXd::Zero(numSensors);
   Eigen::MatrixXd sigmas = Eigen::MatrixXd::Zero(numSensors, numCols);
+  Eigen::VectorXd vec = Eigen::VectorXd::Zero(numSensors);
   for (int i = 0; i < numCols; ++i)
   {
     sigmas.col(i) = observationFunc(sigmaPts.col(i));
@@ -199,15 +196,18 @@ Eigen::MatrixXd UnscentedKf::fillMatrixWithVector(const Eigen::VectorXd vec,
 
 void UnscentedKf::setWeights()
 {
+  lambda = (pow(ALPHA, 2) * (numStates + KAPPA)) - numStates;
+  sigmaPointScalingCoeff = sqrt(numStates + lambda);
+
   // Set up mean weights
   meanWeights = Eigen::VectorXd::Zero(2 * numStates + 1);
-  meanWeights(0) = LAMBDA / (numStates + LAMBDA);
+  meanWeights(0) = lambda / (numStates + lambda);
   for (int i = 1; i < meanWeights.rows(); ++i)
   {
-    meanWeights(i) = 1 / (2 * (numStates + LAMBDA));
+    meanWeights(i) = 1 / (2 * (numStates + lambda));
   }
 
   // Set up covariance weights
   covarianceWeights = meanWeights;
-  covarianceWeights(0) += (1 - ALPHA * ALPHA + BETA);
+  covarianceWeights(0) += (1 - pow(ALPHA, 2) + BETA);
 }
