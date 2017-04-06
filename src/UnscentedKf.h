@@ -2,6 +2,7 @@
 #define UNSCENTEDKF_H_
 
 #include <Eigen/Dense>
+#include <iostream> //TODO delete
 
 class UnscentedKf
 {
@@ -32,7 +33,7 @@ private:
   const double BETA = 2;
   const double KAPPA = 0;
   const double LAMBDA = pow(ALPHA, 2) * (numStates + KAPPA) - numStates;
-  const double SIGMA_POINT_SCALING_COEFF = 3;
+  const double SIGMA_POINT_SCALING_COEFF = 3;//sqrt(numStates + LAMBDA);
 
   virtual Eigen::VectorXd processFunc(Eigen::VectorXd x, double dt) = 0;
   virtual Eigen::VectorXd observationFunc(Eigen::VectorXd z) = 0;

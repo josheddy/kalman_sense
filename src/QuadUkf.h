@@ -52,6 +52,11 @@ private:
     ANGVEL_Z = 12, ACCEL_X = 13, ACCEL_Y = 14, ACCEL_Z = 15
   };
 
+  const double IMU_ACCEL_STD_DEV = 8.66124974095918 * pow(10, -6);
+  const double IMU_GYRO_STD_DEV = 1.2184696791468346 * pow(10, -7);
+  const double Q_SCALING_COEFF = 1;
+  const double R_SCALING_COEFF = 0.1;
+
   geometry_msgs::PoseWithCovarianceStamped lastPoseMsg;
   geometry_msgs::PoseArray quadPoseArray;
   const int POSE_ARRAY_SIZE = 10000;  // number of poses to keep for plotting
@@ -60,22 +65,27 @@ private:
 
   std::timed_mutex mtx;
 
-  Eigen::MatrixXd Q_ProcNoiseCov, R_SensorNoiseCov, H_SensorMap;
+  Eigen::MatrixXd Q_ProcNoise;
+  Eigen::MatrixXd SensorCovMatrixR;
+  //Eigen::MatrixXd ObsMatrixH;  //TODO
+
+  Eigen::MatrixXd ProcessCovMatrixQ(const double dt) const;
 
   ros::Publisher poseStampedPublisher;
   ros::Publisher poseWithCovStampedPublisher;
   ros::Publisher poseArrayPublisher;
 
-  geometry_msgs::PoseStamped quadBeliefToPoseStamped(const QuadBelief b) const;
+  geometry_msgs::PoseStamped quadBeliefToPoseStamped(const QuadBelief qb) const;
   geometry_msgs::PoseWithCovarianceStamped quadBeliefToPoseWithCovStamped(
-      const QuadBelief b) const;
-  void publishAllPoseMessages(QuadBelief b);
+      const QuadBelief qb) const;
+  void publishAllPoseMessages(const QuadBelief qb);
   void updatePoseArray(const geometry_msgs::PoseWithCovarianceStamped p);
 
-  Eigen::Quaterniond checkQuat(const Eigen::Quaterniond lastQuat,
-                               const Eigen::Quaterniond nextQuat) const;
-  Eigen::MatrixXd generateBigOmegaMat(
-      const Eigen::Vector3d angular_velocity) const;
+  Eigen::Quaterniond checkQuatContinuity(
+      const Eigen::Quaterniond lastQuat,
+      const Eigen::Quaterniond nextQuat) const;
+  Eigen::MatrixXd quatIntegrationMatrix(const Eigen::Vector3d angVel) const;
+
   Eigen::VectorXd quadStateToEigen(const QuadUkf::QuadState qs) const;
   QuadUkf::QuadState eigenToQuadState(const Eigen::VectorXd x) const;
 };

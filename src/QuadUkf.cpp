@@ -31,15 +31,34 @@ QuadUkf::QuadUkf(ros::Publisher poseStampedPub,
   QuadUkf::QuadBelief initBelief {initTimeStamp, init_dt, initState, initCov};
   lastBelief = initBelief;
 
-  // Initialize process noise covariance and sensor noise covariance
-  Q_ProcNoiseCov = Eigen::MatrixXd::Identity(numStates, numStates);
-  Q_ProcNoiseCov *= 0.01;  // default value
-  R_SensorNoiseCov = Eigen::MatrixXd::Identity(numSensors, numSensors);
-  R_SensorNoiseCov *= 0.01;  // default value
+  // Initialize sensor noise covariance
+  Eigen::MatrixXd mainBlock(7, 7);
+//  mainBlock << 1.60733370, 0.65393149, 0.02947270, 0.00164179, 0.02865161, 0.00472339,-0.00554183,
+//               0.65393149, 1.36437181, 0.02745309, 0.00088938, 0.01202295,-0.00082392,-0.00705118,
+//               0.02947270, 0.02745309, 0.00100832, 0.00002936, 0.00049179, 0.00007580,-0.00020808,
+//               0.00164179, 0.00088938, 0.00002936, 0.00000330, 0.00005820, 0.00000087,-0.00011233,
+//               0.02865161, 0.01202295, 0.00049179, 0.00005820, 0.00106645, 0.00002199,-0.00011233,
+//               0.00472339,-0.00082392, 0.00007580, 0.00000087, 0.00002199, 0.00003296,-0.00000482,
+//              -0.00554183,-0.00705118,-0.00020808,-0.00000714,-0.00011233,-0.00000482, 0.00005254;
 
-  H_SensorMap = Eigen::MatrixXd::Zero(numStates, numSensors);
-  H_SensorMap.block(0, 0, numSensors, numSensors) = Eigen::MatrixXd::Identity(
-      numSensors, numSensors);
+//  mainBlock << 0.068803823982644,-0.011060159092343,-0.018283119793103, 0.000875162055293,-0.000533421971516, 0.069040324719420, 0.030908864543203,
+//              -0.011060159092343, 0.061195928988031,-0.011983411150980,-0.000364109703193,-0.014848568448855,-0.044247344820758, 0.002241708711508,
+//              -0.018283119793103,-0.011983411150980, 0.203839922110168,-0.000561627716998,-0.019698003755862,-0.028042115890392,-0.097334869536661,
+//               0.000875162055293,-0.000364109703193,-0.000561627716998, 0.000036273349217,-0.000328626883735, 0.002532083304405, 0.001616812139461,
+//              -0.000533421971516,-0.014848568448855,-0.019698003755862,-0.000328626883735, 0.044173108984521, 0.005340560936865,-0.018017528485985,
+//               0.069040324719420,-0.044247344820758,-0.028042115890392, 0.002532083304405, 0.005340560936865, 0.261313913412434,-0.064126940818518,
+//               0.030908864543203, 0.002241708711508,-0.097334869536661, 0.001616812139461,-0.018017528485985,-0.064126940818518, 0.541811165645444;
+//  mainBlock *= pow(10, -7);
+  SensorCovMatrixR = R_SCALING_COEFF
+      * Eigen::MatrixXd::Identity(numSensors, numSensors);
+//  SensorCovMatrixR.block(0, 0, 7, 7) = mainBlock;
+
+  Q_ProcNoise = Q_SCALING_COEFF
+      * Eigen::MatrixXd::Identity(numStates, numStates);
+
+//  ObsMatrixH = Eigen::MatrixXd::Zero(numStates, numSensors);  //TODO This is never used.
+//  ObsMatrixH.block(0, 0, numSensors, numSensors) = Eigen::MatrixXd::Identity(
+//      numSensors, numSensors);
 
   lastPoseMsg.header.stamp.sec = initTimeStamp;
   lastPoseMsg.pose.pose.position.x = initPosition(0);
@@ -55,11 +74,8 @@ QuadUkf::QuadUkf(QuadUkf&& other)
 {
   std::lock_guard<std::timed_mutex> lock(other.mtx);
 
-  Q_ProcNoiseCov = std::move(other.Q_ProcNoiseCov);
-  other.Q_ProcNoiseCov = Eigen::MatrixXd::Zero(1, 1);
-
-  R_SensorNoiseCov = std::move(other.R_SensorNoiseCov);
-  other.R_SensorNoiseCov = Eigen::MatrixXd::Zero(1, 1);
+  SensorCovMatrixR = std::move(other.SensorCovMatrixR);
+  other.SensorCovMatrixR = Eigen::MatrixXd::Zero(1, 1);
 
   ros::NodeHandle n;
   poseStampedPublisher = std::move(other.poseStampedPublisher);
@@ -69,19 +85,14 @@ QuadUkf::QuadUkf(QuadUkf&& other)
   other.poseWithCovStampedPublisher = p;
   other.poseArrayPublisher = p;
 
-  H_SensorMap = std::move(other.H_SensorMap);
-  other.H_SensorMap = Eigen::MatrixXd::Zero(1, 1);
+//  ObsMatrixH = std::move(other.ObsMatrixH);  //TODO
+//  other.ObsMatrixH = Eigen::MatrixXd::Zero(1, 1);
 }
 
 QuadUkf::~QuadUkf()
 {
 }
 
-/*
- * Predicts next state based on IMU readings, resets lastBelief to
- * reflect that prediction, then publishes lastBelief as a
- * geometry_msgs::PoseWithCovarianceStamped message.
- */
 void QuadUkf::imuCallback(const sensor_msgs::ImuConstPtr &msg_in)
 {
   mtx.try_lock_for(std::chrono::milliseconds(100));
@@ -101,12 +112,12 @@ void QuadUkf::imuCallback(const sensor_msgs::ImuConstPtr &msg_in)
   // Predict next state and reset lastBelief
   Eigen::VectorXd x = quadStateToEigen(xB.state);
   xB.dt = msg_in->header.stamp.toSec() - lastBelief.timeStamp;
-  UnscentedKf::Belief b = predictState(x, xB.covariance, Q_ProcNoiseCov, xB.dt);
+  UnscentedKf::Belief b = predictState(x, xB.covariance, Q_ProcNoise, xB.dt);
   QuadUkf::QuadBelief qb {msg_in->header.stamp.toSec(), xB.dt, eigenToQuadState(
       b.state),
                           b.covariance};
-  qb.state.quaternion = checkQuat(lastBelief.state.quaternion,
-                                  qb.state.quaternion);
+  qb.state.quaternion = checkQuatContinuity(lastBelief.state.quaternion,
+                                            qb.state.quaternion);
   lastBelief = qb;
 
   publishAllPoseMessages(lastBelief);
@@ -114,10 +125,6 @@ void QuadUkf::imuCallback(const sensor_msgs::ImuConstPtr &msg_in)
   mtx.unlock();
 }
 
-/*
- * Corrects state based on pose sensor readings (that is, SLAM) and resets
- * lastBelief. Then it publishes lastBelief.
- */
 void QuadUkf::poseCallback(
     const geometry_msgs::PoseWithCovarianceStampedConstPtr &msg_in)
 {
@@ -131,10 +138,18 @@ void QuadUkf::poseCallback(
   z(QUAT_Y) = -msg_in->pose.pose.orientation.z;
   z(QUAT_Z) = msg_in->pose.pose.orientation.y;
   z(QUAT_W) = msg_in->pose.pose.orientation.x;
-  double dtPose = msg_in->header.stamp.toSec() - lastPoseMsg.header.stamp.sec;
+
+  // Pseudovelocity correction
+  double dtPose = msg_in->header.stamp.toSec() - lastPoseMsg.header.stamp.toSec();
   z(VEL_X) = (z(POS_X) - lastPoseMsg.pose.pose.position.x) / dtPose;
   z(VEL_Y) = (z(POS_Y) - lastPoseMsg.pose.pose.position.y) / dtPose;
   z(VEL_Z) = (z(POS_Z) - lastPoseMsg.pose.pose.position.z) / dtPose;
+
+  // Update lastPoseMsg
+  lastPoseMsg.header = msg_in->header;
+  lastPoseMsg.pose.pose.position.x = z(POS_X);
+  lastPoseMsg.pose.pose.position.y = z(POS_Y);
+  lastPoseMsg.pose.pose.position.z = z(POS_Z);
 
   // Check incoming quaternion for rotational continuity and replace if not
   // continuous.
@@ -143,28 +158,28 @@ void QuadUkf::poseCallback(
   inQuat.y() = z(QUAT_Y);
   inQuat.z() = z(QUAT_Z);
   inQuat.w() = z(QUAT_W);
-  Eigen::Vector4d chosenQuat =
-      checkQuat(lastBelief.state.quaternion, inQuat).coeffs();
+  Eigen::Vector4d chosenQuat = checkQuatContinuity(lastBelief.state.quaternion,
+                                                   inQuat).coeffs();
   z.block<4, 1>(3, 0) = chosenQuat;
 
   // Set time step "dt".
   double dt = msg_in->header.stamp.toSec() - lastBelief.timeStamp;
 
-  // Correct the state and covariance at time of pose message
-  QuadUkf::QuadBelief xB = lastBelief;
-  xB.state.velocity = lastBelief.state.velocity
+  QuadUkf::QuadBelief xHat = lastBelief;
+  xHat.state.velocity = lastBelief.state.velocity
       + lastBelief.state.acceleration * dt;
-  xB.state.position = (xB.state.velocity + lastBelief.state.velocity) / 2.0 * dt
+  xHat.state.position = (xHat.state.velocity + lastBelief.state.velocity) / 2.0 * dt
       + lastBelief.state.position;
-  Eigen::MatrixXd Omega = generateBigOmegaMat(
+  Eigen::MatrixXd Theta = quatIntegrationMatrix(
       lastBelief.state.angular_velocity);
-  xB.state.quaternion.coeffs() = lastBelief.state.quaternion.coeffs()
-      + 0.5 * Omega * lastBelief.state.quaternion.coeffs() * dt;
-  xB.state.quaternion.normalize();
-  Eigen::VectorXd xPred = quadStateToEigen(xB.state);
+  xHat.state.quaternion.coeffs() = lastBelief.state.quaternion.coeffs()
+      + 0.5 * Theta * lastBelief.state.quaternion.coeffs() * dt;
+  xHat.state.quaternion.normalize();
+  Eigen::VectorXd xPred = quadStateToEigen(xHat.state);
   Eigen::MatrixXd P = lastBelief.covariance;
+
   UnscentedKf::Belief currStateAndCov = correctState(xPred, P, z,
-                                                     R_SensorNoiseCov);
+                                                     SensorCovMatrixR);
 
   // Update lastBelief.
   lastBelief.dt = dt;
@@ -177,13 +192,13 @@ void QuadUkf::poseCallback(
   mtx.unlock();
 }
 
-void QuadUkf::publishAllPoseMessages(QuadUkf::QuadBelief b)
+void QuadUkf::publishAllPoseMessages(const QuadUkf::QuadBelief b)
 {
-  geometry_msgs::PoseWithCovarianceStamped pwcs =
+  const geometry_msgs::PoseWithCovarianceStamped pwcs =
       quadBeliefToPoseWithCovStamped(b);
   poseWithCovStampedPublisher.publish(pwcs);
   updatePoseArray(pwcs);
-  geometry_msgs::PoseStamped ps = quadBeliefToPoseStamped(b);
+  const geometry_msgs::PoseStamped ps = quadBeliefToPoseStamped(b);
   poseStampedPublisher.publish(ps);
 }
 
@@ -204,11 +219,11 @@ void QuadUkf::updatePoseArray(const geometry_msgs::PoseWithCovarianceStamped p)
 }
 
 /*
- * Ensures rotational continuity by checking for sign-flipping during large
- * rotations (greater than about 270 degrees).
+ * Ensures rotational continuity by checking for sign-flipping in the
+ * orientation quaternion.
  */
-Eigen::Quaterniond QuadUkf::checkQuat(const Eigen::Quaterniond lastQuat,
-                                      const Eigen::Quaterniond nextQuat) const
+Eigen::Quaterniond QuadUkf::checkQuatContinuity(
+    const Eigen::Quaterniond lastQuat, const Eigen::Quaterniond nextQuat) const
 {
   Eigen::Vector4d lastVec, nextVec;
   lastVec = lastQuat.normalized().coeffs();
@@ -277,9 +292,9 @@ Eigen::VectorXd QuadUkf::processFunc(const Eigen::VectorXd x, const double dt)
   QuadUkf::QuadState currState;
 
   // Compute current orientation via quaternion integration.
-  Eigen::MatrixXd Omega = generateBigOmegaMat(prevState.angular_velocity);
+  Eigen::MatrixXd Theta = quatIntegrationMatrix(prevState.angular_velocity);
   currState.quaternion.coeffs() = prevState.quaternion.coeffs()
-      + 0.5 * Omega * prevState.quaternion.coeffs() * dt;
+      + 0.5 * Theta * prevState.quaternion.coeffs() * dt;
   currState.quaternion.normalize();
 
   // Rotate current and previous accelerations into inertial frame, then
@@ -307,36 +322,37 @@ Eigen::VectorXd QuadUkf::observationFunc(const Eigen::VectorXd stateVec)
 }
 
 /*
- * Returns the 4-by-4 Big Omega matrix for performing quaternion integration,
- * given a vector "w" of angular velocities in radians per second.
+ * Given a vector of angular velocities in radians per second, returns the
+ * 4-by-4 quaternion integration matrix.
  */
-Eigen::MatrixXd QuadUkf::generateBigOmegaMat(const Eigen::Vector3d w) const
+Eigen::MatrixXd QuadUkf::quatIntegrationMatrix(
+    const Eigen::Vector3d angVel) const
 {
-  Eigen::MatrixXd Omega(4, 4);
+  Eigen::MatrixXd Theta(4, 4);
 
   // Upper left 3-by-3 block: negative skew-symmetric matrix of vector w
-  Omega(0, 0) = 0;
-  Omega(0, 1) = w(2);
-  Omega(0, 2) = -w(1);
+  Theta(0, 0) = 0;
+  Theta(0, 1) = angVel(2);
+  Theta(0, 2) = -angVel(1);
 
-  Omega(1, 0) = -w(2);
-  Omega(1, 1) = 0;
-  Omega(1, 2) = w(0);
+  Theta(1, 0) = -angVel(2);
+  Theta(1, 1) = 0;
+  Theta(1, 2) = angVel(0);
 
-  Omega(2, 0) = w(1);
-  Omega(2, 1) = -w(0);
-  Omega(2, 2) = 0;
+  Theta(2, 0) = angVel(1);
+  Theta(2, 1) = -angVel(0);
+  Theta(2, 2) = 0;
 
   // Bottom left 1-by-3 block: negative transpose of vector w
-  Omega.block<1, 3>(3, 0) = -w.transpose();
+  Theta.block<1, 3>(3, 0) = -angVel.transpose();
 
   // Upper right 3-by-1 block: w
-  Omega.block<3, 1>(0, 3) = w;
+  Theta.block<3, 1>(0, 3) = angVel;
 
   // Bottom right 1-by-1 block: 0
-  Omega(3, 3) = 0;
+  Theta(3, 3) = 0;
 
-  return Omega;
+  return Theta;
 }
 
 Eigen::VectorXd QuadUkf::quadStateToEigen(const QuadUkf::QuadState qs) const
@@ -393,4 +409,52 @@ QuadUkf::QuadState QuadUkf::eigenToQuadState(const Eigen::VectorXd x) const
   qs.acceleration(2) = x(ACCEL_Z);
 
   return qs;
+}
+
+Eigen::MatrixXd QuadUkf::ProcessCovMatrixQ(const double dt) const
+{
+  Eigen::MatrixXd Q = Eigen::MatrixXd::Zero(numStates, numStates);
+
+  // Variance terms (main diagonal)
+  const double posVariance = IMU_ACCEL_STD_DEV * pow(dt, 5) / 20.0;
+  Q.block(0, 0, 3, 3) = posVariance * Eigen::MatrixXd::Identity(3, 3);
+
+  const double quatVariance = IMU_GYRO_STD_DEV * pow(dt, 3) / 3.0;
+  Q.block(3, 3, 4, 4) = quatVariance * Eigen::MatrixXd::Identity(4, 4);
+
+  const double velVariance = IMU_ACCEL_STD_DEV * pow(dt, 3) / 3.0;
+  Q.block(7, 7, 3, 3) = velVariance * Eigen::MatrixXd::Identity(3, 3);
+
+  const double gyroVariance = IMU_GYRO_STD_DEV * dt;
+  Q.block(10, 10, 3, 3) = gyroVariance * Eigen::MatrixXd::Identity(3, 3);
+
+  const double accelVariance = IMU_ACCEL_STD_DEV * dt;
+  Q.block(13, 13, 3, 3) = accelVariance * Eigen::MatrixXd::Identity(3, 3);
+
+  // Covariance (off-diagonal) terms
+  const double posVelCovariance = IMU_ACCEL_STD_DEV * pow(dt, 4) / 8.0;
+  Eigen::MatrixXd posVelBlock = posVelCovariance
+      * Eigen::MatrixXd::Identity(3, 3);
+  Q.block(0, 7, 3, 3) = posVelBlock;
+  Q.block(7, 0, 3, 3) = posVelBlock;
+
+  const double quatGyroCovariance = IMU_GYRO_STD_DEV * pow(dt, 2) / 2.0;
+  Eigen::MatrixXd quatGyroBlock = Eigen::MatrixXd::Constant(4, 3,
+                                                            quatGyroCovariance);
+  Q.block(3, 10, 4, 3) = quatGyroBlock;
+  Q.block(10, 3, 3, 4) = quatGyroBlock.transpose();
+
+  const double posAccelCovariance = IMU_ACCEL_STD_DEV * pow(dt, 3) / 6.0;
+  Eigen::MatrixXd posAccelBlock = posAccelCovariance
+      * Eigen::MatrixXd::Identity(3, 3);
+  Q.block(0, 13, 3, 3) = posAccelBlock;
+  Q.block(13, 0, 3, 3) = posAccelBlock;
+
+  const double velAccelCovariance = IMU_ACCEL_STD_DEV * pow(dt, 2) / 2.0;
+  Eigen::MatrixXd velAccelBlock = velAccelCovariance
+      * Eigen::MatrixXd::Identity(3, 3);
+  Q.block(7, 13, 3, 3) = velAccelBlock;
+  Q.block(13, 7, 3, 3) = velAccelBlock;
+
+  return Q;
 }

@@ -40,6 +40,7 @@ UnscentedKf::Belief UnscentedKf::correctState(Eigen::VectorXd x,
                                                              meanWeights,
                                                              covarianceWeights,
                                                              R);
+
   Eigen::VectorXd zPred = sensorTf.vector;  // Expected sensor vector
   Eigen::MatrixXd P_zz = sensorTf.covariance;  // Sensor-to-sensor covariance
 
@@ -177,7 +178,7 @@ UnscentedKf::SigmaPointSet UnscentedKf::sampleSensorSpace(
   for (int i = 0; i < numCols; ++i)
   {
     sigmas.col(i) = observationFunc(sigmaPts.col(i));
-    vec = vec + meanWts(i) * sigmas.col(i);
+    vec += meanWts(i) * sigmas.col(i);
   }
 
   UnscentedKf::SigmaPointSet out {vec, sigmas};
