@@ -3,7 +3,7 @@
 UnscentedKf::UnscentedKf() :
     numStates(1), numSensors(1)
 {
-  this->setWeights();
+  this->setWeightsAndCoeffs();
 }
 
 UnscentedKf::~UnscentedKf()
@@ -41,7 +41,7 @@ UnscentedKf::Belief UnscentedKf::correctState(Eigen::VectorXd x,
                                                              covarianceWeights,
                                                              R);
 
-  Eigen::VectorXd zPred = sensorTf.vector;  // Expected sensor vector
+  Eigen::VectorXd zPred = sensorTf.vector;     // Predicted measurement vector
   Eigen::MatrixXd P_zz = sensorTf.covariance;  // Sensor-to-sensor covariance
 
   // Compute state-to-sensor cross-covariance
@@ -194,7 +194,7 @@ Eigen::MatrixXd UnscentedKf::fillMatrixWithVector(const Eigen::VectorXd vec,
   return mat;
 }
 
-void UnscentedKf::setWeights()
+void UnscentedKf::setWeightsAndCoeffs()
 {
   lambda = (pow(ALPHA, 2) * (numStates + KAPPA)) - numStates;
   sigmaPointScalingCoeff = sqrt(numStates + lambda);

@@ -15,14 +15,14 @@ public:
     Eigen::MatrixXd covariance;
   };
 
+  int numStates;
+  int numSensors;
+  void setWeightsAndCoeffs();
+
   UnscentedKf::Belief predictState(Eigen::VectorXd x, Eigen::MatrixXd P,
                                    Eigen::MatrixXd Q, double dt);
   UnscentedKf::Belief correctState(Eigen::VectorXd x, Eigen::MatrixXd P,
                                    Eigen::VectorXd z, Eigen::MatrixXd R);
-
-  void setWeights();
-  int numStates;
-  int numSensors;
 
 private:
   Eigen::VectorXd meanWeights, covarianceWeights;

@@ -3,14 +3,14 @@
 
 #include "UnscentedKf.h"
 
-#include <mutex>
-
 #include "ros/ros.h"
 #include "geometry_msgs/PoseStamped.h"
 #include "geometry_msgs/PoseWithCovarianceStamped.h"
 #include "geometry_msgs/PoseArray.h"
 #include "sensor_msgs/Imu.h"
 #include "std_msgs/Empty.h"
+
+#include <mutex>
 
 class QuadUkf : public UnscentedKf
 {
@@ -52,10 +52,8 @@ private:
     ANGVEL_Z = 12, ACCEL_X = 13, ACCEL_Y = 14, ACCEL_Z = 15
   };
 
-  Eigen::MatrixXd Q_ProcNoiseCov;
+  Eigen::MatrixXd ProcessCovMatrixQ;
   Eigen::MatrixXd SensorCovMatrixR;
-  const double IMU_ACCEL_STD_DEV = 8.66124974095918 * pow(10, -6);
-  const double IMU_GYRO_STD_DEV = 1.2184696791468346 * pow(10, -7);
   const double Q_SCALING_COEFF = 0.01;
   const double R_SCALING_COEFF = 0.01;
 
@@ -67,7 +65,7 @@ private:
 
   std::timed_mutex mtx;
 
-  Eigen::MatrixXd ProcessCovMatrixQ(const double dt) const;
+  //Eigen::MatrixXd ProcessCovMatrixQ(const double dt) const;
 
   ros::Publisher poseStampedPublisher;
   ros::Publisher poseWithCovStampedPublisher;

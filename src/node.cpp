@@ -1,13 +1,14 @@
 #include "QuadUkf.h"
 
-int main(int argc, char **argv) {
+int main(int argc, char **argv)
+{
   ros::init(argc, argv, "kalman_sense");
   ros::NodeHandle nh;
 
   ros::Publisher poseStampedPub = nh.advertise<geometry_msgs::PoseStamped>(
       "pose", 1000);
-  ros::Publisher poseWithCovStampedPub = nh
-      .advertise<geometry_msgs::PoseWithCovarianceStamped>("poseWithCov", 1000);
+  ros::Publisher poseWithCovStampedPub = nh.advertise<
+      geometry_msgs::PoseWithCovarianceStamped>("poseWithCov", 1000);
   ros::Publisher poseArrayPub = nh.advertise<geometry_msgs::PoseArray>(
       "poseHistory", 1);
 
